@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import time
+import difflib
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,6 +53,7 @@ async def websocket_endpoint(websocket: WebSocket):
   logger.info("✅ WebSocket 연결됨")
   
   audio_buffer = bytearray()
+  target_word = ""
   
   try:
     while True:
@@ -71,19 +73,34 @@ async def websocket_endpoint(websocket: WebSocket):
           audio_np = np.frombuffer(audio_buffer, dtype=np.int16).astype(np.float32) / 32768.0
           
           start_time = time.time()
-          segments, info = model.transcribe(audio_np, beam_size=5, language="ko")
+          # 발음 평가를 위해 beam_size를 높이고 영어로 고정 (제시어가 영어이므로)
+          segments, info = model.transcribe(audio_np, beam_size=5, language="en")
           
-          text = ""
+          recognized_text = ""
           for segment in segments:
-            text += segment.text
+            recognized_text += segment.text
           
-          if text.strip():
-            logger.info(f"🗣️ 인식 결과: {text} (소요시간: {time.time() - start_time:.2f}s)")
+          recognized_text = recognized_text.strip().lower().replace(".", "").replace(",", "")
+          
+          if recognized_text:
+            score = 0
+            if target_word:
+              # 유사도 계산 (0.0 ~ 1.0)
+              matcher = difflib.SequenceMatcher(None, target_word.lower(), recognized_text)
+              score = int(matcher.ratio() * 100)
+            
+            logger.info(f"🎯 Target: {target_word} | Recognized: {recognized_text} | Score: {score}")
+            
             await websocket.send_json({
-              "type": "transcript",
-              "content": text,
-              "language": info.language,
-              "probability": info.language_probability
+              # "type": "transcript",
+              # "content": text,
+              # "language": info.language,
+              # "probability": info.language_probability
+              "type": "result",
+              "content": recognized_text,
+              "target": target_word,
+              "score": score,
+              "language": info.language
             })
           
           # 버퍼 비우기 (단순 구현: 인식 후 리셋)
@@ -94,7 +111,8 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
           msg_json = json.loads(message["text"])
           if msg_json.get("type") == "config":
-            logger.info(f"⚙️ 설정 수신: {msg_json}")
+            target_word = msg_json.get("targetWord", "")
+            logger.info(f"⚙️ 설정 수신 - 제시어: {target_word}")
         except:
           pass
                   
