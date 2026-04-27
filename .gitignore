@@ -1,0 +1,21 @@
+# Virtual Environment
+backend/venv/
+.venv/
+env/
+venv.bak/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment Variables
+.env
+.env.local
+
+# Frontend dependencies
+frontend/node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
