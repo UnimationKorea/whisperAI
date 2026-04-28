@@ -18,12 +18,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # 6. Whisper 모델 미리 다운로드 (빌드 시점에 캐싱)
-# 환경 변수에 따라 달라질 수 있으므로, 기본값(tiny)으로 미리 다운로드합니다.
-RUN python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
+# 환경 변수에 따라 달라질 수 있으므로, 기본값(base)으로 미리 다운로드합니다.
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
 
 # 7. 환경 변수 설정
 ENV PORT=8080
-ENV WHISPER_MODEL=tiny
+ENV WHISPER_MODEL=base
 ENV WHISPER_DEVICE=cpu
 ENV WHISPER_COMPUTE_TYPE=int8
 

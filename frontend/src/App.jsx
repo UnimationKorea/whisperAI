@@ -2,24 +2,37 @@ import { useState, useEffect, useRef } from "react"
 import "./App.css"
 
 // WebSocket URL 설정 (프로덕션: 원격, 로컬: 로컬)
-const WS_URL = new URLSearchParams(window.location.search).get("wstest") === "1"
-  ? "ws://localhost:8001/ws/stt"
-  : "wss://whisperai-backend-597168932357.asia-northeast3.run.app/ws/stt";
+const IS_LOCAL = new URLSearchParams(window.location.search).get("wstest") === "1";
+// const WS_URL = IS_LOCAL
+//   ? "ws://localhost:8001/ws/evaluate"
+//   : "wss://whisperai-backend-597168932357.asia-northeast3.run.app/ws/evaluate";
+const API_URL = IS_LOCAL
+  ? "http://localhost:8001"
+  : "https://whisperai-backend-597168932357.asia-northeast3.run.app";
 
 const WORDS = ["dog", "cat", "caw", "rabbit", "tiger"];
+const SILENCE_THRESHOLD = 0.015; // 침묵으로 간주할 볼륨 임계값. 작을 수록 더 민감 (소리가 잘 안 잡히면 0.005까지 낮춤)
+const SILENCE_DURATION = 2000; // 2초간 침묵 시 종료
 
 function App() {
   const [isRecording, setIsRecording] = useState(false);
-  const [status, setStatus] = useState("Disconnected");
+  // const [status, setStatus] = useState("Disconnected");
+  const [isSpeaking, setIsSpeaking] = useState(false); // 음성 감지 상태 표시용
+  const [evaluateMode, setEvaluateMode] = useState("post"); // "websocket" | "post"
   const [targetWord, setTargetWord] = useState("");
   const [result, setResult] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [transcripts, setTranscripts] = useState([]);
   const socketRef = useRef(null);
   const audioContextRef = useRef(null);
   const workletNodeRef = useRef(null);
   const sourceRef = useRef(null);
   const streamRef = useRef(null);
+  const audioChunksRef = useRef([]); // POST 방식을 위한 버퍼
+  const silenceTimerRef = useRef(null); // 침묵 감지 타이머
+  const hasSpokenRef = useRef(false);   // 음성 감지 시작 여부
 
+  /* 
   // WebSocket 연결
   const connectWebSocket = () => {
     const socket = new WebSocket(WS_URL);
@@ -59,6 +72,14 @@ function App() {
     return () => {
       if (socketRef.current) socketRef.current.close();
     };
+  }, []);
+  */
+
+  useEffect(() => {
+    // connectWebSocket(); // <--- 이 부분이 주석 처리되어 있는지 반드시 확인하세요!
+    
+    // 처음 로딩 시 단어 초기화
+    if (!targetWord) selectRandomWord();
   }, []);
 
   const selectRandomWord = () => {
@@ -101,10 +122,11 @@ function App() {
         await audioContext.resume();
       }
 
-      // AudioWorklet 모듈 로드
+      // AudioWorklet 모듈 로드 (Vite 호환 방식)
       try {
-        await audioContext.audioWorklet.addModule(new URL("./utils/audioProcessor.js", import.meta.url));
-        console.log("✅ AudioWorklet 로드 성공");
+        const workletUrl = new URL("./utils/audioProcessor.js", import.meta.url);
+        await audioContext.audioWorklet.addModule(workletUrl);
+        console.log("✅ AudioWorklet 로드 성공:", workletUrl.href);
       } catch (workletError) {
         console.error("❌ AudioWorklet 로드 실패:", workletError);
         alert("오디오 프로세서 로드에 실패했습니다.");
@@ -119,43 +141,85 @@ function App() {
       const workletNode = new AudioWorkletNode(audioContext, "pcm-processor");
       workletNodeRef.current = workletNode;
 
-      // Worklet에서 PCM 데이터 수신 → WebSocket 전송
+      // Worklet에서 PCM 데이터 및 볼륨 수신
       workletNode.port.onmessage = (event) => {
-        const pcmData = event.data;
-        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-          socketRef.current.send(pcmData);
+        const { pcm, volume } = event.data;
+        
+        // 1. 오디오 데이터 처리
+        if (evaluateMode === "websocket") {
+          // 실시간 모드: 바로 전송
+          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(pcm);
+          }
+        } else {
+          // POST 모드: 버퍼에 저장
+          audioChunksRef.current.push(new Int16Array(pcm));
         }
+
+        // 2. 침묵 감지 (VAD)
+        handleSilenceDetection(volume);
       };
 
-      // 서버에 현재 제시어 전송
-      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      /* 
+      // 서버에 현재 제시어 전송 (WebSocket 모드일 때만 필요하지만 일단 전송)
+      if (evaluateMode === "websocket" && socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
         socketRef.current.send(JSON.stringify({
           type: "config",
           targetWord: targetWord
         }));
       }
+      */
 
       // 오디오 파이프라인 연결
       source.connect(workletNode);
       workletNode.connect(audioContext.destination);
 
+      audioChunksRef.current = []; // 버퍼 초기화
+      hasSpokenRef.current = false; // 음성 감지 초기화
+      clearTimeout(silenceTimerRef.current);
+      
       setIsRecording(true);
-      setResult(null); // 녹음 시작 시 이전 결과 초기화
-      console.log("🎤 AudioWorklet 녹음 시작 (16kHz PCM)");
+      setResult(null);
+      console.log(`🎤 AudioWorklet 녹음 시작 (16kHz PCM) (모드: ${evaluateMode})`);
     } catch (err) {
       console.error("Error accessing microphone:", err);
       alert("마이크 접근에 실패했습니다.");
     }
   };
 
+  // 침묵 감지 처리 함수
+  const handleSilenceDetection = (volume) => {
+    if (volume > SILENCE_THRESHOLD) {
+      // 소리가 들리면 타이머 초기화 및 음성 감지 시작
+      setIsSpeaking(true);
+      hasSpokenRef.current = true;
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    } else {
+      setIsSpeaking(false);
+      if (hasSpokenRef.current) {
+        if (!silenceTimerRef.current) {
+          silenceTimerRef.current = setTimeout(() => {
+            console.log("🤫 침묵 감지: 자동 녹음 중지");
+            stopRecording();
+          }, SILENCE_DURATION);
+        }
+      }
+    }
+  };
+
   // 녹음 중지
-  const stopRecording = () => {
-    // WorkletNode 해제
+  const stopRecording = async () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+
+    setIsRecording(false);
+    
+    // 노드 및 스트림 해제 로직
     if (workletNodeRef.current) {
       workletNodeRef.current.disconnect();
-      if (workletNodeRef.current.port) {
-        workletNodeRef.current.port.onmessage = null;
-      }
       workletNodeRef.current = null;
     }
 
@@ -177,16 +241,92 @@ function App() {
       streamRef.current = null;
     }
 
-    setIsRecording(false);
     console.log("⏹ 녹음 중지");
+
+    // POST 모드인 경우 파일 전송
+    if (evaluateMode === "post" && audioChunksRef.current.length > 0) {
+      await sendAudioFile();
+    }
+  };
+
+  // POST 방식 파일 전송
+  const sendAudioFile = async () => {
+    setIsLoading(true);
+    try {
+      // 1. PCM 데이터 합치기
+      const totalLength = audioChunksRef.current.reduce((acc, chunk) => acc + chunk.length, 0);
+      const combinedPcm = new Int16Array(totalLength);
+      let offset = 0;
+      for (const chunk of audioChunksRef.current) {
+        combinedPcm.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      // 2. Blob 생성 (WAV 헤더 없이 Raw PCM으로 보내거나 가짜 헤더 추가)
+      // 여기서는 백엔드가 파일 형식을 식별할 수 있도록 단순 Blob 생성
+      const audioBlob = new Blob([combinedPcm.buffer], { type: "audio/raw" });
+      
+      const formData = new FormData();
+      formData.append("file", audioBlob, "recording.raw");
+      formData.append("expected", targetWord);
+
+      console.log("📤 파일 업로드 중...");
+      const response = await fetch(`${API_URL}/evaluate`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+      console.log("✅ 평가 결과 수신:", data);
+
+      const resultData = {
+        type: "result",
+        content: data.recognized_text,
+        target: data.expected,
+        score: data.score,
+        feedback: data.feedback
+      };
+
+      setResult(resultData);
+      setTranscripts(prev => [resultData, ...prev]);
+    } catch (error) {
+      console.error("❌ 파일 전송 실패:", error);
+      alert("평가 전송 중 오류가 발생했습니다.");
+    } finally {
+      setIsLoading(false);
+      audioChunksRef.current = [];
+    }
   };
 
   return (
     <div className="App">
       <h1>Whisper 발음 평가</h1>
-      <div className="status-badge" style={{ color: status === "Connected" ? "#4CAF50" : "#f44336" }}>
-        Status: {status}
+      
+      {/* 
+      <div className="mode-selector">
+        <button 
+          className={evaluateMode === "websocket" ? "active" : ""} 
+          onClick={() => setEvaluateMode("websocket")}
+          disabled={isRecording}
+        >
+          실시간 (WebSocket)
+        </button>
+        <button 
+          className={evaluateMode === "post" ? "active" : ""} 
+          onClick={() => setEvaluateMode("post")}
+          disabled={isRecording}
+        >
+          녹음 후 평가 (POST)
+        </button>
       </div>
+      */}
+
+      {isRecording && (
+        <div className="recording-indicator">
+          <span className={`dot ${isSpeaking ? "active" : ""}`}></span>
+          {isSpeaking ? "음성 감지 중..." : "침묵 대기 중... 2초 대기 후 자동으로 녹음 종료."}
+        </div>
+      )}
 
       <div className="target-container">
         <h2>제시어를 읽어보세요:</h2>
@@ -201,12 +341,15 @@ function App() {
             <span className="score-label">점</span>
           </div>
           <p className="recognition-text">인식된 발음: <strong>{result.content}</strong></p>
+          {result.feedback && <p className="feedback-text">{result.feedback}</p>}
         </div>
       )}
 
+      {isLoading && <div className="loader">분석 중...</div>}
+
       <div className="card">
         {!isRecording ? (
-          <button onClick={startRecording} disabled={status !== "Connected"} className="primary">
+          <button onClick={startRecording} className="primary">
             🎤 녹음 시작
           </button>
         ) : (
@@ -222,10 +365,6 @@ function App() {
         {transcripts.map((t, i) => (
           <div key={i} className="transcript-item">
             <span className="time">[{new Date().toLocaleTimeString()}]</span>
-            {/* <span className="text"> {t.content}</span>
-            <div className="info">
-              <small>Lang: {t.language} ({Math.round(t.probability * 100)}%)</small>
-            </div> */}
             <span className="text"> {t.target} → {t.content} ({t.score}점)</span>
           </div>
         ))}
