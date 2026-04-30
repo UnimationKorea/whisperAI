@@ -3,7 +3,9 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from faster_whisper import WhisperModel
+# from faster_whisper import WhisperModel
+import whisperx
+import torch
 
 # 라우터 가져오기
 from api.evaluate import router as evaluate_router
@@ -18,11 +20,11 @@ logger = logging.getLogger(__name__)
 # 환경 변수
 PORT = int(os.getenv("PORT", "8001"))
 MODEL_SIZE = os.getenv("WHISPER_MODEL", "base")
-DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
+DEVICE = os.getenv("WHISPER_DEVICE", "cpu") # GPU 사용 시 "cuda"
 COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 
 def create_app():
-  app = FastAPI(title="Whisper STT Backend")
+  app = FastAPI(title="WhisperX STT Backend")
 
   # CORS 설정
   app.add_middleware(
@@ -34,9 +36,15 @@ def create_app():
   )
 
   # Whisper 모델 로드 및 공유 설정 (app.state)
-  logger.info(f"⏳ Whisper 모델 로딩 중... (Size: {MODEL_SIZE}, Device: {DEVICE})")
-  app.state.model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-  logger.info("✅ Whisper 모델 로딩 완료")
+  # logger.info(f"⏳ Whisper 모델 로딩 중... (Size: {MODEL_SIZE}, Device: {DEVICE})")
+  # app.state.model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+  # logger.info("✅ Whisper 모델 로딩 완료")
+  # WhisperX 모델 로드
+  logger.info(f"⏳ WhisperX 모델 로딩 중... (Size: {MODEL_SIZE}, Device: {DEVICE})")
+  # whisperx.load_model은 내부적으로 faster-whisper를 사용합니다.
+  app.state.model = whisperx.load_model(MODEL_SIZE, DEVICE, compute_type=COMPUTE_TYPE)
+  app.state.device = DEVICE
+  logger.info("✅ WhisperX 모델 로딩 완료")
 
   # 라우터 등록
   app.include_router(evaluate_router)
@@ -47,7 +55,8 @@ def create_app():
       "status": "healthy",
       "model": MODEL_SIZE,
       "device": DEVICE,
-      "compute_type": COMPUTE_TYPE
+      "compute_type": COMPUTE_TYPE,
+      "engine": "whisperx"
     }
 
   return app

@@ -1,6 +1,8 @@
 fastapi==0.115.6
 uvicorn==0.34.0
-faster-whisper==1.0.3
+# faster-whisper==1.0.3
+torch
+whisperx @ git+https://github.com/m-bain/whisperx.git
 websockets==14.1
 python-dotenv==1.0.1
 numpy==1.26.4
