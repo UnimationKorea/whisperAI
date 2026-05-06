@@ -20,6 +20,7 @@ function App() {
   const [isSpeaking, setIsSpeaking] = useState(false); // 음성 감지 상태 표시용
   const [evaluateMode, setEvaluateMode] = useState("post"); // "websocket" | "post"
   const [targetWord, setTargetWord] = useState("");
+  const [language, setLanguage] = useState("en"); // "en" | "zh" | "ja"
   const [result, setResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [transcripts, setTranscripts] = useState([]);
@@ -269,6 +270,7 @@ function App() {
       const formData = new FormData();
       formData.append("file", audioBlob, "recording.raw");
       formData.append("expected", targetWord);
+      formData.append("language", language);
 
       console.log("📤 파일 업로드 중...");
       const response = await fetch(`${API_URL}/evaluate`, {
@@ -301,6 +303,39 @@ function App() {
   return (
     <div className="App">
       <h1>Whisper 발음 평가</h1>
+
+      <div className="language-selector">
+        <label className={`radio-label ${language === "en" ? "active" : ""}`}>
+          <input
+            type="radio"
+            name="language"
+            value="en"
+            checked={language === "en"}
+            onChange={(e) => setLanguage(e.target.value)}
+          />
+          영어
+        </label>
+        <label className="radio-label disabled">
+          <input
+            type="radio"
+            name="language"
+            value="zh"
+            checked={language === "zh"}
+            disabled
+          />
+          중국어
+        </label>
+        <label className="radio-label disabled">
+          <input
+            type="radio"
+            name="language"
+            value="ja"
+            checked={language === "ja"}
+            disabled
+          />
+          일본어
+        </label>
+      </div>
       
       {/* 
       <div className="mode-selector">
