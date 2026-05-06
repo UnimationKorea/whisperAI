@@ -9,7 +9,7 @@ EVALUATORS = {
   "ja": JapaneseEvaluator(),
 }
 
-def evaluate_pronunciation(expected: str, actual: str, word_list: list = None, language: str = "en", aligned_segments: list = None):
+def evaluate_pronunciation(expected: str, actual: str, word_list: list = None, language: str = "en", aligned_segments: list = None, difficulty: int = 3):
   """
   Dispatcher: 언어별 평가 엔진을 호출합니다.
   """
@@ -17,7 +17,7 @@ def evaluate_pronunciation(expected: str, actual: str, word_list: list = None, l
   evaluator = EVALUATORS.get(language, EVALUATORS["en"])
   
   # 2. 평가 실행
-  result = evaluator.evaluate(expected, actual, word_list, aligned_segments)
+  result = evaluator.evaluate(expected, actual, word_list, aligned_segments, difficulty=difficulty)
   
   # 공통 응답 구조 보장
   return {

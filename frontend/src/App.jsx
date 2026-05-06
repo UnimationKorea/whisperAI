@@ -21,6 +21,7 @@ function App() {
   const [evaluateMode, setEvaluateMode] = useState("post"); // "websocket" | "post"
   const [targetWord, setTargetWord] = useState("");
   const [language, setLanguage] = useState("en"); // "en" | "zh" | "ja"
+  const [difficulty, setDifficulty] = useState(3); // 1 (Easy) ~ 5 (Hard)
   const [result, setResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [transcripts, setTranscripts] = useState([]);
@@ -271,8 +272,9 @@ function App() {
       formData.append("file", audioBlob, "recording.raw");
       formData.append("expected", targetWord);
       formData.append("language", language);
+      formData.append("difficulty", difficulty);
 
-      console.log("📤 파일 업로드 중...");
+      console.log(`📤 파일 업로드 중... (난이도: ${difficulty})`);
       const response = await fetch(`${API_URL}/evaluate`, {
         method: "POST",
         body: formData,
@@ -362,6 +364,21 @@ function App() {
           {isSpeaking ? "음성 감지 중..." : "침묵 대기 중... 2초 대기 후 자동으로 녹음 종료."}
         </div>
       )}
+
+      <div className="difficulty-selector">
+        <h3>난이도 설정</h3>
+        <div className="difficulty-group">
+          {[1, 2, 3, 4, 5].map((level) => (
+            <button 
+              key={level}
+              className={`difficulty-btn ${difficulty === level ? "active" : ""}`}
+              onClick={() => setDifficulty(level)}
+            >
+              {level}단계 {level === 1 ? "(초보)" : level === 3 ? "(보통)" : level === 5 ? "(전문가)" : ""}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="target-container">
         <h2>제시어를 읽어보세요:</h2>
