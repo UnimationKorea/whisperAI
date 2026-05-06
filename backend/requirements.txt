@@ -8,4 +8,4 @@ python-dotenv==1.0.1
 numpy==1.26.4
 python-multipart==0.0.12
 requests==2.32.5
-g2p-en==1.0.5
+g2p-en==2.1.0
