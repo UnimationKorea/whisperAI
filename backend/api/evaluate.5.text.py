@@ -25,18 +25,9 @@ def get_align_model(language_code, device):
 PRONUNCIATION_CANDIDATES = {
     "dog": ["dog", "dod", "dag", "dork", "dot", "dock", "dug", "bog", "tog", "log"],
     "cat": ["cat", "cart", "cad", "ket", "kit", "cut", "cap", "gat", "bat", "sat"],
-    "cow": ["cow", "core", "call", "caught", "claw", "raw", "saw", "caw", "how", "go"],
+    "caw": ["caw", "core", "call", "caught", "claw", "raw", "saw", "cow", "how", "go"],
     "rabbit": ["rabbit", "rabbit-it", "rabbit-e", "rabid", "rob-it", "labbit", "habit", "babbit", "grab-it", "rabbit-o"],
-    "tiger": ["tiger", "tyger", "tieger", "taiger", "tighter", "tigger", "ticker", "dygre", "diger", "tire"],
-    "chicken": ["chicken", "kitchen", "checking", "chick", "chinken", "shicken", "sicken", "jicken", "choking", "taken"],
-    "horse": ["horse", "house", "hose", "force", "coarse", "hoarse", "worse", "hoss", "heart", "hears"],
-    "sheep": ["sheep", "ship", "cheap", "sleep", "sheet", "seep", "jeep", "steep", "peep", "sheepy"],
-    "goat": ["goat", "coat", "boat", "gate", "got", "gold", "ghost", "go", "dot", "gote"],
-    "monkey": ["monkey", "money", "monk", "chunky", "donkey", "mangy", "minky", "funky", "murky", "money-key"],
-    "duck": ["duck", "deck", "dock", "dark", "tuck", "luck", "buck", "dug", "dot", "dack"],
-    "lion": ["lion", "line", "lying", "iron", "ryan", "loin", "lyin", "light", "layout", "liar"],
-    "fox": ["fox", "box", "ox", "focus", "fax", "force", "pox", "fangs", "fog", "fox-it"],
-    "deer": ["deer", "dear", "beer", "fear", "tear", "door", "dare", "near", "tier", "dee-er"]
+    "tiger": ["tiger", "tyger", "tieger", "taiger", "tighter", "tigger", "ticker", "dygre", "diger", "tire"]
 }
 
 async def run_evaluation_process(model, device, audio_np, expected_word, language="en", difficulty=3):

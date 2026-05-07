@@ -10,7 +10,7 @@ const API_URL = IS_LOCAL
   ? "http://localhost:8001"
   : "https://whisperai-backend-597168932357.asia-northeast3.run.app";
 
-const WORDS = ["dog", "cat", "caw", "rabbit", "tiger"];
+const WORDS = ["dog", "cat", "cow", "rabbit", "tiger", "chicken", "horse", "sheep", "goat", "monkey", "duck", "lion", "fox", "deer"];
 const SILENCE_THRESHOLD = 0.015; // 침묵으로 간주할 볼륨 임계값. 작을 수록 더 민감 (소리가 잘 안 잡히면 0.005까지 낮춤)
 const SILENCE_DURATION = 2000; // 2초간 침묵 시 종료
 
@@ -19,7 +19,7 @@ function App() {
   // const [status, setStatus] = useState("Disconnected");
   const [isSpeaking, setIsSpeaking] = useState(false); // 음성 감지 상태 표시용
   const [evaluateMode, setEvaluateMode] = useState("post"); // "websocket" | "post"
-  const [targetWord, setTargetWord] = useState("");
+  const [targetWord, setTargetWord] = useState(WORDS[0]);
   const [language, setLanguage] = useState("en"); // "en" | "zh" | "ja"
   const [difficulty, setDifficulty] = useState(3); // 1 (Easy) ~ 5 (Hard)
   const [result, setResult] = useState(null);
@@ -381,9 +381,25 @@ function App() {
       </div>
 
       <div className="target-container">
-        <h2>제시어를 읽어보세요:</h2>
-        <div className="target-word">{targetWord}</div>
-        <button onClick={selectRandomWord} className="secondary">단어 바꾸기</button>
+        <h2>연습할 단어를 선택하세요:</h2>
+        <div className="word-grid">
+          {WORDS.map((word) => (
+            <label 
+              key={word} 
+              className={`word-radio ${targetWord === word ? "active" : ""}`}
+            >
+              <input
+                type="radio"
+                name="targetWord"
+                value={word}
+                checked={targetWord === word}
+                onChange={(e) => setTargetWord(e.target.value)}
+                disabled={isRecording}
+              />
+              {word}
+            </label>
+          ))}
+        </div>
       </div>
 
       {result && (

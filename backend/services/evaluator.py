@@ -9,19 +9,28 @@ EVALUATORS = {
   "ja": JapaneseEvaluator(),
 }
 
-def evaluate_pronunciation(expected: str, actual: str, word_list: list = None, language: str = "en", aligned_segments: list = None, difficulty: int = 3):
+def evaluate_pronunciation(expected: str, candidates: list, raw_text: str = "", language: str = "en", difficulty: int = 3, candidate_results: dict = None):
   """
-  Dispatcher: 언어별 평가 엔진을 호출합니다.
+  Dispatcher: 언어별 평가 엔진을 호출하여 최종 단어 선택 및 점수를 산출합니다.
   """
   # 1. 언어에 맞는 평가기 선택 (기본값: 영어)
   evaluator = EVALUATORS.get(language, EVALUATORS["en"])
   
   # 2. 평가 실행
-  result = evaluator.evaluate(expected, actual, word_list, aligned_segments, difficulty=difficulty)
+  # 후보군 리스트와 각 정렬 결과, 그리고 Whisper가 직접 들은 raw_text를 모두 넘깁니다.
+  result = evaluator.evaluate(
+    expected=expected, 
+    candidates=candidates, 
+    raw_text=raw_text, 
+    candidate_results=candidate_results, 
+    difficulty=difficulty
+  )
   
   # 공통 응답 구조 보장
   return {
     "score": result.get("score", 0),
     "feedback": result.get("feedback", "평가 결과가 없습니다."),
+    "recognized_text": result.get("recognized_text", expected), # 선택된 최종 단어
+    "aligned_result": result.get("aligned_result"), # 선택된 단어의 정렬 상세 데이터
     "error": result.get("error")
   }
