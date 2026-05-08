@@ -11,6 +11,13 @@ const API_URL = IS_LOCAL
   : "https://whisperai-backend-597168932357.asia-northeast3.run.app";
 
 const WORDS = ["dog", "cat", "cow", "rabbit", "tiger", "chicken", "horse", "sheep", "goat", "monkey", "duck", "lion", "fox", "deer"];
+const SENTENCES = [
+  "I love my dog.",
+  "The cat is sleeping.",
+  "The rabbit jumps high.",
+  "A tiger lives in the jungle.",
+  "The chicken crossed the road."
+];
 const SILENCE_THRESHOLD = 0.015; // 침묵으로 간주할 볼륨 임계값. 작을 수록 더 민감 (소리가 잘 안 잡히면 0.005까지 낮춤)
 const SILENCE_DURATION = 2000; // 2초간 침묵 시 종료
 
@@ -19,6 +26,7 @@ function App() {
   // const [status, setStatus] = useState("Disconnected");
   const [isSpeaking, setIsSpeaking] = useState(false); // 음성 감지 상태 표시용
   const [evaluateMode, setEvaluateMode] = useState("post"); // "websocket" | "post"
+  const [practiceMode, setPracticeMode] = useState("word"); // "word" | "sentence"
   const [targetWord, setTargetWord] = useState(WORDS[0]);
   const [language, setLanguage] = useState("en"); // "en" | "zh" | "ja"
   const [difficulty, setDifficulty] = useState(3); // 1 (Easy) ~ 5 (Hard)
@@ -84,8 +92,18 @@ function App() {
     if (!targetWord) selectRandomWord();
   }, []);
 
+  // 모드 변경 시 첫 번째 항목 자동 선택
+  useEffect(() => {
+    if (practiceMode === "word") {
+      setTargetWord(WORDS[0]);
+    } else {
+      setTargetWord(SENTENCES[0]);
+    }
+  }, [practiceMode]);
+
   const selectRandomWord = () => {
-    const randomWord = WORDS[Math.floor(Math.random() * WORDS.length)];
+    const list = practiceMode === "word" ? WORDS : SENTENCES;
+    const randomWord = list[Math.floor(Math.random() * list.length)];
     setTargetWord(randomWord);
     setResult(null); // 새로운 단어 선택 시 이전 결과 초기화
 
@@ -273,6 +291,7 @@ function App() {
       formData.append("expected", targetWord);
       formData.append("language", language);
       formData.append("difficulty", difficulty);
+      formData.append("mode", practiceMode);
 
       console.log(`📤 파일 업로드 중... (난이도: ${difficulty})`);
       const response = await fetch(`${API_URL}/evaluate`, {
@@ -288,7 +307,8 @@ function App() {
         content: data.recognized_text,
         target: data.expected,
         score: data.score,
-        feedback: data.feedback
+        feedback: data.feedback,
+        word_details: data.word_details || []
       };
 
       setResult(resultData);
@@ -380,23 +400,40 @@ function App() {
         </div>
       </div>
 
+      <div className="mode-tabs">
+        <button 
+          className={`tab ${practiceMode === "word" ? "active" : ""}`}
+          onClick={() => setPracticeMode("word")}
+          disabled={isRecording}
+        >
+          단어 연습
+        </button>
+        <button 
+          className={`tab ${practiceMode === "sentence" ? "active" : ""}`}
+          onClick={() => setPracticeMode("sentence")}
+          disabled={isRecording}
+        >
+          문장 연습
+        </button>
+      </div>
+
       <div className="target-container">
-        <h2>연습할 단어를 선택하세요:</h2>
-        <div className="word-grid">
-          {WORDS.map((word) => (
+        <h2>{practiceMode === "word" ? "연습할 단어를 선택하세요:" : "연습할 문장을 선택하세요:"}</h2>
+        <div className={`word-grid ${practiceMode === "sentence" ? "sentence-list" : ""}`}>
+          {(practiceMode === "word" ? WORDS : SENTENCES).map((text) => (
             <label 
-              key={word} 
-              className={`word-radio ${targetWord === word ? "active" : ""}`}
+              key={text} 
+              className={`word-radio ${targetWord === text ? "active" : ""} ${practiceMode === "sentence" ? "sentence-radio" : ""}`}
             >
               <input
                 type="radio"
                 name="targetWord"
-                value={word}
-                checked={targetWord === word}
+                value={text}
+                checked={targetWord === text}
                 onChange={(e) => setTargetWord(e.target.value)}
                 disabled={isRecording}
               />
-              {word}
+              {text}
             </label>
           ))}
         </div>
@@ -408,7 +445,27 @@ function App() {
             <span className="score-value">{result.score}</span>
             <span className="score-label">점</span>
           </div>
-          <p className="recognition-text">인식된 발음: <strong>{result.content}</strong></p>
+          
+          <div className="evaluation-details">
+            <h3 className="detail-title">분석 결과:</h3>
+            <div className="word-highlight-container">
+              {result.word_details && result.word_details.length > 0 ? (
+                result.word_details.map((detail, idx) => (
+                  <div key={idx} className={`word-detail-item ${detail.is_correct ? "correct" : "incorrect"}`}>
+                    <span className="expected-word">{detail.expected}</span>
+                    {!detail.is_correct && (
+                      <span className="actual-word">
+                        {detail.actual ? `→ ${detail.actual}` : "(누락)"}
+                      </span>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p className="recognition-text">인식된 발음: <strong>{result.content}</strong></p>
+              )}
+            </div>
+          </div>
+
           {result.feedback && <p className="feedback-text">{result.feedback}</p>}
         </div>
       )}

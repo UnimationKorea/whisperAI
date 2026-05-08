@@ -39,13 +39,11 @@ PRONUNCIATION_CANDIDATES = {
     "deer": ["deer", "dear", "beer", "fear", "tear", "door", "dare", "near", "tier", "dee-er"]
 }
 
-async def run_evaluation_process(model, device, audio_np, expected_word, language="en", difficulty=3, mode="word"):
+async def run_evaluation_process(model, device, audio_np, expected_word, language="en", difficulty=3):
   """
   Multi-Alignment Scoring: 후보군 중 가장 유사한 발음을 탐색합니다.
   """
   expected_word = expected_word.lower().strip()
-  print(f"\n[Evaluation Mode: {mode.upper()}] Target: {expected_word}")
-  
   candidates = PRONUNCIATION_CANDIDATES.get(expected_word, [expected_word])
   
   # 오디오 길이 계산 (초 단위)
@@ -107,7 +105,6 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
       raw_text=raw_text,
       language=language,
       difficulty=difficulty,
-      mode=mode,
       candidate_results=candidate_results
     )
 
@@ -117,27 +114,23 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
     print(f"✅ Final Choice: '{actual_text}'\n")
 
     return {
-      "language": language,
       "expected": expected_word,
       "recognized_text": actual_text,
-      "score": evaluation.get("score", 0),
-      "word_details": evaluation.get("word_details", []),
-      "feedback": evaluation.get("feedback", ""),
-      "char_segments": best_result_aligned.get("char_segments", []) if best_result_aligned else [],
-      "word_segments": best_result_aligned.get("word_segments", []) if best_result_aligned else []
+      "score": evaluation["score"],
+      "feedback": evaluation["feedback"],
+      "language": language,
+      "word_segments": best_result_aligned.get("word_segments", []) if best_result_aligned else [],
+      "char_segments": best_result_aligned.get("char_segments", []) if best_result_aligned else []
     }
     
   except Exception as e:
     logger.error(f"❌ Alignment 실패: {e}")
     return {
-      "language": language,
       "expected": expected_word,
       "recognized_text": "recognition_error",
       "score": 0,
-      "feedback": f"분석 오류: {str(e)}",
-      "word_details": [],
-      "char_segments": [],
-      "word_segments": [],
+      "feedback": "발음을 분석하는 도중 오류가 발생했습니다.",
+      "language": language,
       "error": str(e)
     }
 
@@ -150,8 +143,7 @@ async def evaluate(
   file: UploadFile = File(...), 
   expected: str = Form(...),
   language: str = Form("en"),
-  difficulty: int = Form(3),
-  mode: str = Form("word")
+  difficulty: int = Form(3)
 ):
   model = request.app.state.model
   device = getattr(request.app.state, "device", "cpu")
@@ -164,7 +156,7 @@ async def evaluate(
     if filename.endswith(".raw") or filename.endswith(".pcm"):
       # 2-1. Raw PCM 처리 (FFmpeg 불필요, 로컬 실행용)
       audio_np = np.frombuffer(file_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-      result = await run_evaluation_process(model, device, audio_np, expected, language, difficulty, mode)
+      result = await run_evaluation_process(model, device, audio_np, expected, language, difficulty)
     else:
       # 2-2. 표준 오디오 형식 처리 (FFmpeg 필요, Cloud Run/Docker용)
       with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as tmp_file:
@@ -173,20 +165,19 @@ async def evaluate(
 
       try:
         audio_np = whisperx.load_audio(tmp_path)
-        result = await run_evaluation_process(model, device, audio_np, expected, language, difficulty, mode)
+        result = await run_evaluation_process(model, device, audio_np, expected, language, difficulty)
       finally:
         if os.path.exists(tmp_path):
           os.remove(tmp_path)
 
     return {
-      "language": result["language"],
       "expected": expected,
       "recognized_text": result["recognized_text"],
       "score": result["score"],
       "feedback": result["feedback"],
-      "word_details": result.get("word_details", []),
-      "char_segments": result.get("char_segments", []),
-      "word_segments": result.get("word_segments", [])
+      "language": result["language"],
+      "word_segments": result.get("word_segments", []),
+      "char_segments": result.get("char_segments", [])
     }
 
   except Exception as e:

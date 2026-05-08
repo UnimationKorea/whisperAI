@@ -31,6 +31,69 @@
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
+/* 발음 분석 상세 스타일 */
+.evaluation-details {
+  margin-top: 20px;
+  width: 100%;
+  text-align: center;
+}
+
+.detail-title {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.word-highlight-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.word-detail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.expected-word {
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.word-detail-item.correct .expected-word {
+  color: #10b981; /* Green */
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.word-detail-item.incorrect .expected-word {
+  color: #ef4444; /* Red */
+  background: rgba(239, 68, 68, 0.1);
+  text-decoration: line-through;
+}
+
+.actual-word {
+  font-size: 0.8rem;
+  color: #fbbf24; /* Yellow/Orange */
+  font-weight: 500;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .feedback-text {
   margin-top: 10px;
   color: #818cf8;
@@ -125,8 +188,49 @@
   display: none;
 }
 
-.secondary {
-  display: none; /* 제거된 버튼 */
+/* 연습 모드 탭 스타일 */
+.mode-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 25px;
+}
+
+.tab {
+  padding: 8px 24px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+}
+
+.tab:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tab.active {
+  background: var(--primary-color);
+  color: white;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+/* 문장 리스트 스타일 */
+.sentence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 800px;
+}
+
+.sentence-radio {
+  justify-content: flex-start !important;
+  padding: 15px 20px !important;
+  text-align: left;
+  width: 100%;
 }
 
 /* 언어 선택기 스타일 */

@@ -1,7 +1,7 @@
 from .base import BaseEvaluator
 
 class ChineseEvaluator(BaseEvaluator):
-  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3) -> dict:
+  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, mode: str = "word") -> dict:
     # 1. 가장 점수가 높은 후보 선택 (기본 동작)
     best_candidate = expected
     best_score = -1
@@ -20,8 +20,14 @@ class ChineseEvaluator(BaseEvaluator):
     score = int(matcher.ratio() * 100)
     
     return {
-      "score": score,
-      "feedback": "중국어 평가 엔진 준비 중입니다. (성조 평가 예정)",
+      "score": int(best_score * 100),
+      "feedback": f"중국어 발음 평가 결과입니다. (인식: {best_candidate})",
       "recognized_text": best_candidate,
+      "word_details": [{
+        "idx": 0,
+        "expected": expected,
+        "actual": best_candidate,
+        "is_correct": (best_candidate == expected)
+      }],
       "aligned_result": best_aligned_result
     }
