@@ -10,14 +10,49 @@ const API_URL = IS_LOCAL
   ? "http://localhost:8001"
   : "https://whisperai-backend-597168932357.asia-northeast3.run.app";
 
-const WORDS = ["dog", "cat", "cow", "rabbit", "tiger", "chicken", "horse", "sheep", "goat", "monkey", "duck", "lion", "fox", "deer"];
-const SENTENCES = [
-  "I love my dog.",
-  "The cat is sleeping.",
-  "The rabbit jumps high.",
-  "A tiger lives in the jungle.",
-  "The chicken crossed the road."
-];
+const LANG_DATA = {
+  en: {
+    words: ["dog", "cat", "cow", "rabbit", "tiger", "chicken", "horse", "sheep", "goat", "monkey", "duck", "lion", "fox", "deer"],
+    sentences: [
+      "I love my dog.",
+      "The cat is sleeping.",
+      "The rabbit jumps high.",
+      "A tiger lives in the jungle.",
+      "The chicken crossed the road."
+    ]
+  },
+  zh: {
+    words: ["작업 전"],
+    sentences: [
+      "你吃饭了吗?",
+      "我还没吃呢.",
+      "你去图书馆了吗?",
+      "我还没去呢.",
+      "我们一起去吃饺子吧.",
+      "好, 去那家饭馆吧.",
+      "我们一起去喝茶吧.",
+      "好, 去那家茶馆吧.",
+      "请问，有什么菜?",
+      "我给你拿菜单.",
+      "请问，有什么茶?",
+      "我给你看菜单.",
+      "这里的炒饭很好吃.",
+      "炒饭的价格也不贵.",
+      "这里的菜很好吃.",
+      "菜的价格也不贵."
+    ]
+  },
+  ja: {
+    words: ["犬", "猫", "牛", "うさぎ", "虎", "鶏", "馬", "羊", "山羊", "猿", "鴨", "獅子", "狐", "鹿"],
+    sentences: [
+      "私は犬が好きです。",
+      "猫が寝ています。",
+      "うさぎは高く跳びます。",
+      "虎はジャングルに住んでいます。",
+      "鶏が道を渡りました。"
+    ]
+  }
+};
 const SILENCE_THRESHOLD = 0.015; // 침묵으로 간주할 볼륨 임계값. 작을 수록 더 민감 (소리가 잘 안 잡히면 0.005까지 낮춤)
 const SILENCE_DURATION = 2000; // 2초간 침묵 시 종료
 
@@ -27,7 +62,7 @@ function App() {
   const [isSpeaking, setIsSpeaking] = useState(false); // 음성 감지 상태 표시용
   const [evaluateMode, setEvaluateMode] = useState("post"); // "websocket" | "post"
   const [practiceMode, setPracticeMode] = useState("word"); // "word" | "sentence"
-  const [targetWord, setTargetWord] = useState(WORDS[0]);
+  const [targetWord, setTargetWord] = useState(LANG_DATA.en.words[0]);
   const [language, setLanguage] = useState("en"); // "en" | "zh" | "ja"
   const [difficulty, setDifficulty] = useState(3); // 1 (Easy) ~ 5 (Hard)
   const [result, setResult] = useState(null);
@@ -92,17 +127,17 @@ function App() {
     if (!targetWord) selectRandomWord();
   }, []);
 
-  // 모드 변경 시 첫 번째 항목 자동 선택
+  // 언어 또는 모드 변경 시 해당 언어/모드의 첫 번째 항목 자동 선택
   useEffect(() => {
-    if (practiceMode === "word") {
-      setTargetWord(WORDS[0]);
-    } else {
-      setTargetWord(SENTENCES[0]);
-    }
-  }, [practiceMode]);
+    const data = LANG_DATA[language] || LANG_DATA.en;
+    const list = practiceMode === "word" ? data.words : data.sentences;
+    setTargetWord(list[0]);
+    setResult(null);
+  }, [practiceMode, language]);
 
   const selectRandomWord = () => {
-    const list = practiceMode === "word" ? WORDS : SENTENCES;
+    const data = LANG_DATA[language] || LANG_DATA.en;
+    const list = practiceMode === "word" ? data.words : data.sentences;
     const randomWord = list[Math.floor(Math.random() * list.length)];
     setTargetWord(randomWord);
     setResult(null); // 새로운 단어 선택 시 이전 결과 초기화
@@ -337,13 +372,13 @@ function App() {
           />
           영어
         </label>
-        <label className="radio-label disabled">
+        <label className={`radio-label ${language === "zh" ? "active" : ""}`}>
           <input
             type="radio"
             name="language"
             value="zh"
             checked={language === "zh"}
-            disabled
+            onChange={(e) => setLanguage(e.target.value)}
           />
           중국어
         </label>
@@ -420,7 +455,7 @@ function App() {
       <div className="target-container">
         <h2>{practiceMode === "word" ? "연습할 단어를 선택하세요:" : "연습할 문장을 선택하세요:"}</h2>
         <div className={`word-grid ${practiceMode === "sentence" ? "sentence-list" : ""}`}>
-          {(practiceMode === "word" ? WORDS : SENTENCES).map((text) => (
+          {(LANG_DATA[language] || LANG_DATA.en)[practiceMode === "word" ? "words" : "sentences"].map((text) => (
             <label 
               key={text} 
               className={`word-radio ${targetWord === text ? "active" : ""} ${practiceMode === "sentence" ? "sentence-radio" : ""}`}

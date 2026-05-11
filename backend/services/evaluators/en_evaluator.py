@@ -1,7 +1,7 @@
 import re
 import difflib
 import logging
-from g2p_en import G2p
+from g2p_en import G2p  # type: ignore
 from .base import BaseEvaluator
 
 logger = logging.getLogger(__name__)
