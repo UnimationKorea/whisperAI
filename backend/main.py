@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 import whisperx
 import torch
 
-# 라우터 가져오기
-from api.evaluate import router as evaluate_router
+# 라우터 및 모델 관리 함수 가져오기
+from api.evaluate import router as evaluate_router, get_align_model
 
 # .env 로드
 load_dotenv()
@@ -48,6 +48,20 @@ def create_app():
 
   # 라우터 등록
   app.include_router(evaluate_router)
+
+  @app.on_event("startup")
+  async def startup_event():
+    """
+    서버 시작 시 모델들을 메모리에 미리 로드하여 첫 요청 지연을 방지합니다.
+    """
+    logger.info("🔥 [Warm-up] 정렬 모델 메모리 로딩 시작...")
+    try:
+      # 언어별 정렬 모델을 미리 로드
+      get_align_model("en", DEVICE)
+      get_align_model("zh", DEVICE)
+      logger.info("✅ [Warm-up] 모든 모델 로딩 완료 및 즉시 사용 가능")
+    except Exception as e:
+      logger.error(f"❌ [Warm-up] 모델 로딩 실패: {e}")
 
   @app.get("/health")
   async def health_check():

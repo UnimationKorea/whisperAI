@@ -1,0 +1,37 @@
+# backend/Dockerfile.base
+# 1. Base image (Python 3.12 Slim 사용)
+FROM python:3.12-slim
+
+# 2. 필수 시스템 패키지 설치
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3. 주요 라이브러리 선설치 (빌드 시간 단축을 위해 무거운 것들 위주)
+# whisperx는 특정 커밋으로 고정하여 안정성 확보
+RUN pip install --no-cache-dir \
+    torch \
+    whisperx@git+https://github.com/m-bain/whisperx.git@1c4b23e13d79280a076e98644ac1e38321d253a9 \
+    g2p-en==2.1.0 \
+    pypinyin==0.55.0 \
+    nltk \
+    fastapi==0.115.6 \
+    uvicorn==0.34.0 \
+    python-dotenv==1.0.1 \
+    websockets==14.1 \
+    numpy>=2.1.0 \
+    python-multipart==0.0.12 \
+    requests==2.32.5
+
+# 4. 모델 및 데이터 미리 다운로드 (빌드 시점에 캐싱하여 런타임 지연 방지)
+RUN python -c "import nltk; nltk.download('averaged_perceptron_tagger'); nltk.download('cmudict'); nltk.download('punkt')" && \
+    python -c "from g2p_en import G2p; G2p()" && \
+    python -c "from pypinyin import pinyin; pinyin('你好')"
+
+# WhisperX 모델 및 언어별 정렬 모델 (영어, 중국어) 미리 로드
+# 이 과정이 가장 오래 걸리므로 베이스 이미지에 포함시킵니다.
+RUN python -c "import whisperx; whisperx.load_model('base', 'cpu', compute_type='int8')" && \
+    python -c "import whisperx; whisperx.load_align_model('en', 'cpu'); whisperx.load_align_model('zh', 'cpu')"
+
+# 베이스 이미지는 여기까지 실행된 상태로 저장됩니다.
