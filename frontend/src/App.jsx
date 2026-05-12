@@ -22,7 +22,7 @@ const LANG_DATA = {
     ]
   },
   zh: {
-    words: ["작업 전"],
+    words: ["작업 전", "단어", "평가", "불가능"],
     sentences: [
       "你吃饭了吗?",
       "我还没吃呢.",
