@@ -1,0 +1,14 @@
+# backend/cloudbuild.base.yaml
+# 베이스 이미지를 빌드하고 로깅 오류를 해결하기 위한 구성 파일
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', 'gcr.io/whisperai-494605/whisper-repo/whisper-base:latest',
+      '-f', 'backend/Dockerfile.base',
+      '.'
+    ]
+images:
+  - 'gcr.io/whisperai-494605/whisper-repo/whisper-base:latest'
+options:
+  logging: CLOUD_LOGGING_ONLY # 이 줄이 'if build.service_account is specified...' 오류를 해결합니다.
