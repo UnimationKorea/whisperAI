@@ -10,16 +10,16 @@ class EnglishEvaluator(BaseEvaluator):
   def __init__(self):
     self.g2p = G2p()
 
-  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, mode: str = "word") -> dict:
+  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, mode: str = "word", feedback_map: dict = None) -> dict:
     """
     영어 평가 메인 진입점: 모드(단어/문장)에 따라 채점 로직을 분기합니다.
     """
     if mode == "sentence":
       return self._evaluate_sentence(expected, raw_text, candidate_results, difficulty)
     else:
-      return self._evaluate_word(expected, candidates, raw_text, candidate_results, difficulty)
+      return self._evaluate_word(expected, candidates, raw_text, candidate_results, difficulty, feedback_map)
 
-  def _evaluate_word(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3) -> dict:
+  def _evaluate_word(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, feedback_map: dict = None) -> dict:
     """
     [단어 채점 로직]
     영어 전용 평가 로직: 
@@ -116,7 +116,7 @@ class EnglishEvaluator(BaseEvaluator):
       final_score = 100 # 일반 모드 100점 보정
 
     # 3. 피드백 생성 및 상세 정보 구성
-    feedback = self._generate_candidate_feedback(expected, actual, final_score, clarity_score)
+    feedback = self._generate_candidate_feedback(expected, actual, final_score, clarity_score, feedback_map)
     
     word_details = [{
       "idx": 0,
@@ -356,7 +356,7 @@ class EnglishEvaluator(BaseEvaluator):
     print("------------------------------------------\n")
     return final_clarity
 
-  def _generate_candidate_feedback(self, expected: str, actual: str, score: int, clarity: int) -> str:
+  def _generate_candidate_feedback(self, expected: str, actual: str, score: int, clarity: int, feedback_map: dict = None) -> str:
     """선택된 후보 단어에 따른 맞춤형 피드백"""
     
     # 정답과 일치하는 경우
@@ -368,103 +368,12 @@ class EnglishEvaluator(BaseEvaluator):
       else:
         return f"단어는 맞았지만 발음이 흐릿해요. (점수: {score}) 더 큰 소리로 명확하게 발음해보세요!"
     
-    variants_feedback = {
-      "rabbit": {
-        "rabbit-it": "👉 'rabbit' 끝에 'it' 소리가 섞여 들려요. 조금 더 깔끔하게 끝내보세요.",
-        "rabbit-e": "👉 'rabbit' 끝에 'e' 소리가 덧붙여진 것 같아요. 주의해서 다시 발음해보세요.",
-        "labbit": "👉 'r' 발음이 'l'처럼 들려요. 혀끝을 입천장에 대지 말고 살짝 말아보세요!",
-        "habit": "👉 'r' 발음이 'h'처럼 들려요. 입술을 좀 더 동그랗게 모으고 시작해보세요.",
-        "babbit": "👉 첫 소리가 'b'처럼 들려요. 입술을 붙이지 말고 소리를 내보세요."
-      },
-      "dog": {
-        "dod": "👉 끝소리 'g'가 'd'처럼 들려요. 목 안쪽에서 소리를 더 울려주세요.",
-        "dag": "👉 모음 'o'가 'a'처럼 들려요. 입을 더 동그랗게 벌려보세요.",
-        "dot": "👉 끝소리 'g'가 't'처럼 짧게 들려요. 목청을 조금 더 울려주세요.",
-        "dock": "👉 끝소리 'g'가 'k'처럼 들려요. 공기를 밖으로 훅 내뱉지 마세요.",
-        "log": "👉 첫 소리 'd'가 'l'처럼 들려요. 혀끝을 윗니 뒤쪽에 강하게 대보세요."
-      },
-      "tiger": {
-        "tyger": "👉 발음이 유사하지만 중간 모음이 약간 달라요. '타이거'에 집중해보세요.",
-        "tighter": "👉 중간 'g' 발음이 't'처럼 들려요. 더 부드럽게 넘어가보세요.",
-        "tigger": "👉 중간 모음 'i'가 짧게 들려요. 좀 더 길게 발음해볼까요?",
-        "ticker": "👉 'g' 발음이 'k'처럼 들려요. 목 안쪽에서 소리를 더 울려주세요.",
-        "diger": "👉 첫 소리 't'가 'd'처럼 들려요. 공기를 좀 더 강하게 뿜어보세요."
-      },
-      "cat": {
-        "cap": "👉 끝소리 't'가 'p'처럼 들려요. 혀끝을 윗니 뒤에 붙이며 멈춰보세요.",
-        "cart": "👉 중간에 'r' 소리가 섞여 들려요. 혀를 굴리지 말고 짧게 끊어보세요.",
-        "cad": "👉 끝소리가 'd'처럼 들려요. 좀 더 가볍고 짧게 't' 소리를 내보세요.",
-        "ket": "👉 모음 'a'가 'e'처럼 들려요. 입을 더 위아래로 벌려보세요.",
-        "cut": "👉 모음 'a'가 'u'처럼 들려요. 입을 더 크게 벌리고 소리 내보세요.",
-        "sat": "👉 첫 소리 'c'가 's'처럼 들려요. 목 뒤쪽에서 '큭' 하는 느낌으로 시작하세요.",
-      },
-      "cow": {
-        "core": "👉 소리가 입안에서 너무 굴러가요. 혀를 고정하고 길게 '오-' 소리를 내보세요.",
-        "call": "👉 끝에 'l' 소리가 섞여 들려요. 혀를 입천장에 대지 마세요.",
-        "claw": "👉 중간에 'l' 소리가 섞여 들려요. 혀를 움직이지 말고 소리 내보세요.",
-        "how": "👉 첫 소리가 'h'처럼 들려요. 목 안쪽에서 더 강하게 'ㅋ' 소리를 내주세요.",
-        "raw": "👉 첫 소리가 'r'처럼 들려요. 'c'의 'ㅋ' 소리에 집중해보세요.",
-        "saw": "👉 첫 소리가 's'처럼 들려요. 'ㅋ' 소리를 더 명확히 내주세요.",
-        "caught": "👉 끝에 't' 소리가 들려요. 소리를 그냥 길게 빼면서 마무리하세요."
-      },
-      "chicken": {
-        "kitchen": "👉 요리하는 '주방(kitchen)'처럼 들려요. 'ch' 소리를 더 강하게 터뜨려보세요.",
-        "checking": "👉 'checking'처럼 들려요. 마지막 'n' 소리를 짧고 간결하게 마무리하세요.",
-        "chick": "👉 단어 끝부분이 생략되었어요. '치킨'하고 끝까지 발음해볼까요?",
-        "shicken": "👉 'ch'가 'sh'처럼 부드럽게 들려요. 좀 더 강하게 '치' 소리를 내보세요."
-      },
-      "horse": {
-        "house": "👉 살고 있는 '집(house)'처럼 들려요. 중간에 'r' 소리를 넣어 혀를 살짝 굴려보세요.",
-        "hose": "👉 'r' 소리가 빠진 'hose'처럼 들려요. 모음을 조금 더 길고 깊게 발음해 보세요.",
-        "force": "👉 첫 소리가 'f'처럼 들려요. 윗니로 입술을 물지 말고 'ㅎ' 소리를 내보세요.",
-        "heart": "👉 'heart'처럼 들려요. 끝소리를 's' 발음으로 부드럽게 마무리하세요."
-      },
-      "sheep": {
-        "ship": "👉 'i' 소리가 짧은 'ship'처럼 들려요. 입술을 양옆으로 더 찢으며 '이-'하고 길게 소리 내보세요.",
-        "cheap": "👉 첫 소리가 'ch'처럼 강해요. 공기를 살며시 내뱉으며 '쉬-' 소리를 내보세요.",
-        "sleep": "👉 'sh' 대신 'sl' 소리가 들려요. 혀를 입천장에 대지 말고 시작해 보세요.",
-        "sheet": "👉 끝소리가 't'로 들려요. 입술을 내밀며 '프' 소리로 가볍게 닫아주세요."
-      },
-      "goat": {
-        "coat": "👉 첫 소리가 'c'처럼 들려요. 목청을 울려 '그' 소리로 시작해 보세요.",
-        "boat": "👉 첫 소리가 'b'처럼 들려요. 입술을 붙이지 말고 목 안쪽에서 소리를 내보세요.",
-        "gate": "👉 모음이 'a'처럼 들려요. 입을 더 동그랗게 모아서 '오' 소리를 내보세요.",
-        "ghost": "👉 끝에 's' 소리가 섞여 있어요. '트' 소리로 깔끔하게 멈춰보세요."
-      },
-      "monkey": {
-        "money": "👉 'k' 소리가 빠진 '돈(money)'처럼 들려요. 중간에 '크' 소리를 살짝 넣어주세요.",
-        "donkey": "👉 첫 소리가 'd'처럼 들려요. 'ㅁ' 소리로 부드럽게 시작해 보세요.",
-        "monk": "👉 끝부분 'key' 발음이 빠졌어요. 끝까지 '멍키'라고 발음해 보세요.",
-        "funky": "👉 첫 소리가 'f'처럼 들려요. 입술을 다물고 'ㅁ' 소리를 내보세요."
-      },
-      "duck": {
-        "deck": "👉 모음이 'e'처럼 들려요. 입을 더 아래로 턱을 내리며 '어' 소리를 내보세요.",
-        "dock": "👉 모음이 'o'처럼 들려요. 입을 너무 동그랗게 벌리지 말고 발음해 보세요.",
-        "dark": "👉 'r' 소리가 섞여 들려요. 혀를 굴리지 말고 짧게 '덕' 하고 끊어보세요.",
-        "tuck": "👉 첫 소리가 't'처럼 들려요. 목청을 울리는 '드' 소리로 시작해 보세요."
-      },
-      "lion": {
-        "line": "👉 'line'처럼 들려요. 뒤에 '언' 소리를 추가해서 '라이온'이라고 발음해 보세요.",
-        "iron": "👉 첫 소리 'l'이 빠진 'iron'처럼 들려요. 혀끝을 윗니 뒤에 대고 시작해 보세요.",
-        "ryan": "👉 첫 소리가 'r'처럼 들려요. 혀를 말지 말고 윗니 뒤에 대보세요.",
-        "lying": "👉 'lying'처럼 들려요. 끝소리를 코로 내지 말고 입을 살짝 벌리며 마무리하세요."
-      },
-      "fox": {
-        "box": "👉 첫 소리가 'b'처럼 들려요. 윗니로 아랫입술을 가볍게 물고 바람을 내뱉어 보세요.",
-        "ox": "👉 첫 소리 'f'가 빠진 '황소(ox)'처럼 들려요. 아랫입술을 살짝 물고 바람을 세게 내뿜어 보세요.",
-        "fax": "👉 모음이 'a'처럼 들려요. 입을 위아래로 더 크게 벌려 '아'와 '오' 사이 소리를 내보세요.",
-        "force": "👉 끝소리가 'ce'처럼 들려요. 'ks' 소리를 내며 짧게 끊어보세요."
-      },
-      "deer": {
-        "dear": "👉 발음은 좋지만 'dear'와 혼동될 수 있어요. 문맥에 따라 주의가 필요해요.",
-        "beer": "👉 첫 소리가 'b'처럼 들려요. 혀끝을 윗니 뒤에 대고 '드' 소리를 내보세요.",
-        "fear": "👉 첫 소리가 'f'처럼 들려요. 입술을 물지 말고 혀를 사용해 보세요.",
-        "door": "👉 모음이 'o'처럼 들려요. 입을 양옆으로 살짝 당기며 '이-' 소리를 섞어보세요."
-      }
-    }
+    # 프론트엔드에서 받은 피드백 맵에서 해당 인식 결과에 대한 피드백이 있는지 확인
+    specific_feedback = None
+    if feedback_map:
+      # feedback_map 구조: {"인식단어": "피드백문구", ...}
+      specific_feedback = feedback_map.get(actual)
 
-    # 해당되는 피드백 찾기
-    specific_feedback = variants_feedback.get(expected, {}).get(actual)
     if specific_feedback:
       return f"{specific_feedback} (점수: {score})"
 

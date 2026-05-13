@@ -7,14 +7,14 @@ from .base import BaseEvaluator
 logger = logging.getLogger(__name__)
 
 class ChineseEvaluator(BaseEvaluator):
-  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, mode: str = "word") -> dict:
+  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, mode: str = "word", feedback_map: dict = None) -> dict:
     """
     중국어 평가 메인 진입점
     """
     if mode == "sentence":
       return self._evaluate_sentence(expected, raw_text, candidate_results, difficulty)
     else:
-      return self._evaluate_word(expected, candidates, raw_text, candidate_results, difficulty)
+      return self._evaluate_word(expected, candidates, raw_text, candidate_results, difficulty, feedback_map)
 
   def _get_pinyin_tone(self, text: str):
     """
@@ -148,7 +148,7 @@ class ChineseEvaluator(BaseEvaluator):
       "aligned_result": candidate_results.get(expected, {}).get("result") if candidate_results else None
     }
 
-  def _evaluate_word(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3) -> dict:
+  def _evaluate_word(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, feedback_map: dict = None) -> dict:
     """
     중국어 단어 평가 로직 (후보군 매칭 + 성조 분석)
     """

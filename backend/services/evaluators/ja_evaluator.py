@@ -1,7 +1,7 @@
 from .base import BaseEvaluator
 
 class JapaneseEvaluator(BaseEvaluator):
-  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, mode: str = "word") -> dict:
+  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, mode: str = "word", feedback_map: dict = None) -> dict:
     # 1. 가장 점수가 높은 후보 선택 (기본 동작)
     best_candidate = expected
     best_score = -1

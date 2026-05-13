@@ -9,7 +9,7 @@ EVALUATORS = {
   "ja": JapaneseEvaluator(),
 }
 
-def evaluate_pronunciation(expected: str, candidates: list, raw_text: str = "", language: str = "en", difficulty: int = 3, mode: str = "word", candidate_results: dict = None):
+def evaluate_pronunciation(expected: str, candidates: list, raw_text: str = "", language: str = "en", difficulty: int = 3, mode: str = "word", candidate_results: dict = None, feedback_map: dict = None):
   """
   Dispatcher: 언어별 평가 엔진을 호출하여 최종 단어 선택 및 점수를 산출합니다.
   """
@@ -24,7 +24,8 @@ def evaluate_pronunciation(expected: str, candidates: list, raw_text: str = "", 
     raw_text=raw_text, 
     candidate_results=candidate_results, 
     difficulty=difficulty,
-    mode=mode
+    mode=mode,
+    feedback_map=feedback_map
   )
   
   # 공통 응답 구조 보장

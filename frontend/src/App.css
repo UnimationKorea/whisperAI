@@ -220,10 +220,11 @@
 
 /* 문장 리스트 스타일 */
 .sentence-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
   max-width: 800px;
+  width: 100%;
 }
 
 .sentence-radio {

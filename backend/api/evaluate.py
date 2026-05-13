@@ -21,32 +21,16 @@ def get_align_model(language_code, device):
     align_models[language_code] = whisperx.load_align_model(language_code=language_code, device=device)
   return align_models[language_code]
 
-# 각 단어별 발음 후보군 (10개씩, 정답 유사도 순서로 정렬)
-PRONUNCIATION_CANDIDATES = {
-    "dog": ["dog", "dod", "dag", "dork", "dot", "dock", "dug", "bog", "tog", "log"],
-    "cat": ["cat", "cart", "cad", "ket", "kit", "cut", "cap", "gat", "bat", "sat"],
-    "cow": ["cow", "core", "call", "caught", "claw", "raw", "saw", "caw", "how", "go"],
-    "rabbit": ["rabbit", "rabbit-it", "rabbit-e", "rabid", "rob-it", "labbit", "habit", "babbit", "grab-it", "rabbit-o"],
-    "tiger": ["tiger", "tyger", "tieger", "taiger", "tighter", "tigger", "ticker", "dygre", "diger", "tire"],
-    "chicken": ["chicken", "kitchen", "checking", "chick", "chinken", "shicken", "sicken", "jicken", "choking", "taken"],
-    "horse": ["horse", "house", "hose", "force", "coarse", "hoarse", "worse", "hoss", "heart", "hears"],
-    "sheep": ["sheep", "ship", "cheap", "sleep", "sheet", "seep", "jeep", "steep", "peep", "sheepy"],
-    "goat": ["goat", "coat", "boat", "gate", "got", "gold", "ghost", "go", "dot", "gote"],
-    "monkey": ["monkey", "money", "monk", "chunky", "donkey", "mangy", "minky", "funky", "murky", "money-key"],
-    "duck": ["duck", "deck", "dock", "dark", "tuck", "luck", "buck", "dug", "dot", "dack"],
-    "lion": ["lion", "line", "lying", "iron", "ryan", "loin", "lyin", "light", "layout", "liar"],
-    "fox": ["fox", "box", "ox", "focus", "fax", "force", "pox", "fangs", "fog", "fox-it"],
-    "deer": ["deer", "dear", "beer", "fear", "tear", "door", "dare", "near", "tier", "dee-er"]
-}
-
-async def run_evaluation_process(model, device, audio_np, expected_word, language="en", difficulty=3, mode="word"):
+async def run_evaluation_process(model, device, audio_np, expected_word, language="en", difficulty=3, mode="word", candidates=None, feedback_map=None):
   """
   Multi-Alignment Scoring: 후보군 중 가장 유사한 발음을 탐색합니다.
   """
   expected_word = expected_word.lower().strip()
   print(f"\n[Evaluation Mode: {mode.upper()}] Target: {expected_word}")
   
-  candidates = PRONUNCIATION_CANDIDATES.get(expected_word, [expected_word])
+  # 후보군이 전달되지 않은 경우 기본값으로 [정답단어] 사용
+  if not candidates:
+    candidates = [expected_word]
   
   # 오디오 길이 계산 (초 단위)
   duration = audio_np.shape[0] / 16000
@@ -108,7 +92,8 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
       language=language,
       difficulty=difficulty,
       mode=mode,
-      candidate_results=candidate_results
+      candidate_results=candidate_results,
+      feedback_map=feedback_map
     )
 
     actual_text = evaluation["recognized_text"]
@@ -151,11 +136,25 @@ async def evaluate(
   expected: str = Form(...),
   language: str = Form("en"),
   difficulty: int = Form(3),
-  mode: str = Form("word")
+  mode: str = Form("word"),
+  candidates: str = Form(None),   # JSON string
+  feedback_map: str = Form(None)  # JSON string
 ):
   model = request.app.state.model
   device = getattr(request.app.state, "device", "cpu")
   
+  # JSON 문자열 파싱
+  parsed_candidates = None
+  parsed_feedback_map = None
+  
+  try:
+    if candidates:
+      parsed_candidates = json.loads(candidates)
+    if feedback_map:
+      parsed_feedback_map = json.loads(feedback_map)
+  except Exception as e:
+    logger.warning(f"Failed to parse candidates or feedback_map: {e}")
+
   try:
     # 1. 파일 데이터 읽기
     file_bytes = await file.read()
@@ -164,7 +163,10 @@ async def evaluate(
     if filename.endswith(".raw") or filename.endswith(".pcm"):
       # 2-1. Raw PCM 처리 (FFmpeg 불필요, 로컬 실행용)
       audio_np = np.frombuffer(file_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-      result = await run_evaluation_process(model, device, audio_np, expected, language, difficulty, mode)
+      result = await run_evaluation_process(
+        model, device, audio_np, expected, language, difficulty, mode, 
+        candidates=parsed_candidates, feedback_map=parsed_feedback_map
+      )
     else:
       # 2-2. 표준 오디오 형식 처리 (FFmpeg 필요, Cloud Run/Docker용)
       with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as tmp_file:
@@ -173,7 +175,10 @@ async def evaluate(
 
       try:
         audio_np = whisperx.load_audio(tmp_path)
-        result = await run_evaluation_process(model, device, audio_np, expected, language, difficulty, mode)
+        result = await run_evaluation_process(
+          model, device, audio_np, expected, language, difficulty, mode, 
+          candidates=parsed_candidates, feedback_map=parsed_feedback_map
+        )
       finally:
         if os.path.exists(tmp_path):
           os.remove(tmp_path)
