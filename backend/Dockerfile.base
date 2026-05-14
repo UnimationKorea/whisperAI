@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir \
     requests==2.32.5
 
 # 4. 모델 및 데이터 미리 다운로드 (빌드 시점에 캐싱하여 런타임 지연 방지)
-RUN python -c "import nltk; nltk.download('averaged_perceptron_tagger'); nltk.download('cmudict'); nltk.download('punkt')" && \
+RUN python -c "import nltk; nltk.download('averaged_perceptron_tagger'); nltk.download('averaged_perceptron_tagger_eng'); nltk.download('cmudict'); nltk.download('punkt')" && \
     python -c "from g2p_en import G2p; G2p()" && \
     python -c "from pypinyin import pinyin; pinyin('你好')"
 
