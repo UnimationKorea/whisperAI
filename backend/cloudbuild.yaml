@@ -1,0 +1,38 @@
+# backend/cloudbuild.yaml
+steps:
+  # 1. 도커 이미지 빌드 (Dockerfile에 정의된 whisper-base 이미지를 베이스로 사용)
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', 'gcr.io/$PROJECT_ID/whisper-backend:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/whisper-backend:latest',
+      '.'
+    ]
+
+  # 2. 빌드된 이미지를 Artifact Registry / GCR에 푸시
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/whisper-backend:$COMMIT_SHA']
+
+  # 3. Cloud Run에 자동 배포
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'whisperai-backend' # 실제 Cloud Run 서비스 이름에 맞춰 수정 필요
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/whisper-backend:$COMMIT_SHA'
+      - '--region'
+      - 'asia-northeast3'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--cpu-boost' # 🚀 컨테이너 시작 시 CPU 부스트 (구동 속도 향상)
+
+options:
+  # 서비스 계정 권한 관련 에러 방지를 위한 로깅 설정
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'N1_HIGHCPU_8' # 🚀 고성능 빌드 머신 사용 (처리 속도 향상)
+
+images:
+  - 'gcr.io/$PROJECT_ID/whisper-backend:latest'

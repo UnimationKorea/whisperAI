@@ -40,9 +40,18 @@ class EnglishEvaluator(BaseEvaluator):
     # 문장 부호 및 공백 제거
     raw_phonemes = [p for p in raw_phonemes if re.match(r'\w+', p)]
 
+    # 제시어(Target)의 음소 추출
+    expected_phonemes = self.g2p(expected)
+    expected_phonemes = [p for p in expected_phonemes if re.match(r'\w+', p)]
+
     print(f"\n--- [Word Evaluation: {expected}] ---")
-    print(f"--- [Phonetic Correction Selection (English)] ---")
+    print(f"Target Phonemes: {expected_phonemes}")
     print(f"Initial raw transcription: '{raw_text}' -> Phonemes: {raw_phonemes}")
+    print(f"--- [Phonetic Correction Selection (English)] ---")
+
+    if not candidates:
+      candidates = [expected]
+
     for cand in candidates:
       res = candidate_results.get(cand, {})
       alignment_score = res.get("avg_score", 0)
@@ -57,17 +66,16 @@ class EnglishEvaluator(BaseEvaluator):
       phonetic_similarity = 1.0 - (dist / max_len)
       
       # 복합 점수 산출 (가중치: 물리적 정렬 60% + 음소 유사도 40%)
-      # Whisper가 raw_text로 정확히 맞췄다면(유사도 1.0), 
-      # 물리 점수가 조금 낮아도(예: tiger vs tire) 정답이 선택될 확률이 높음
       composite_score = (alignment_score * 0.6) + (phonetic_similarity * 0.4)
       
-      # 제시어 우선권 부여 (정답 단어와 일치하면 강력한 보너스 부여)
+      # 제시어 우선권 부여: 음소 유사도가 최소한의 기준(0.2)을 넘을 때만 부여
+      # 발음이 아예 다르면(예: cat vs oh) 가점을 주지 않아 오인식을 방지합니다.
       bonus_str = ""
-      if cand == expected:
+      if cand == expected and phonetic_similarity > 0.2:
         composite_score += 0.1
         bonus_str = " [+0.1 Expected Bonus]"
       
-      print(f"  - '{cand}': Align({alignment_score:.3f}) + Phonetic({phonetic_similarity:.3f}) = Comp({composite_score:.3f}){bonus_str}")
+      print(f"  - '{cand}' ({cand_phonemes}): Align({alignment_score:.3f}) + Phonetic({phonetic_similarity:.3f}) = Comp({composite_score:.3f}){bonus_str}")
 
       if composite_score > highest_composite_score:
         highest_composite_score = composite_score
@@ -77,7 +85,24 @@ class EnglishEvaluator(BaseEvaluator):
     print(f"🏆 Selected Candidate: '{best_candidate}'")
     print(f"--------------------------------------------------\n")
 
-    # 2. 최종 선택된 단어로 명확도(Clarity) 및 점수 산출
+    # 3. 임계값 체크: 너무 낮은 점수는 무시 (전혀 다른 단어로 간주)
+    # 복합 점수가 0.55 미만이면 발음 유사도나 물리적 정렬 중 하나가 매우 낮다는 의미입니다.
+    if highest_composite_score < 0.55:
+      return {
+        "score": 0,
+        "feedback": f"👉 전혀 다른 단어로 들려요. (인식: '{raw_text}') 다시 한 번 또박또박 발음해보세요.",
+        "recognized_text": raw_text,
+        "word_details": [{
+          "idx": 0,
+          "expected": expected,
+          "actual": raw_text,
+          "is_correct": False,
+          "score": 0
+        }],
+        "aligned_result": best_aligned_result
+      }
+
+    # 4. 최종 선택된 단어로 명확도(Clarity) 및 점수 산출
     actual = best_candidate
     aligned_segments = best_aligned_result.get("segments", []) if best_aligned_result else []
     
@@ -148,6 +173,11 @@ class EnglishEvaluator(BaseEvaluator):
     aligned_segments = best_aligned_result.get("segments", []) if best_aligned_result else []
 
     print(f"\n--- [Sentence Evaluation: {expected}] ---")
+    
+    # 정답 문장의 음소 추출 및 출력
+    expected_phonemes = self.g2p(expected_clean)
+    expected_phonemes = [p for p in expected_phonemes if re.match(r'\w+', p)]
+    print(f"Target Phonemes: {expected_phonemes}")
     print(f"Raw transcription: '{raw_text}'")
 
     word_scores = []

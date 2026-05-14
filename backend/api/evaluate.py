@@ -35,15 +35,50 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
   # 오디오 길이 계산 (초 단위)
   duration = audio_np.shape[0] / 16000
   
-  # 0. 초기 자유 전사 (Whisper가 처음 들은 그대로 확인용)
-  raw_segments_gen, _ = model.model.transcribe(
+  # 0. 초기 자유 전사 (언어를 고정하지 않고 자동 감지하여 타 언어 오인식/번역 방지)
+  raw_segments_gen, info = model.model.transcribe(
     audio_np, 
-    language=language,
+    # language=language, # 언어를 고정하면 타 언어 입력 시 번역될 위험이 있음
     temperature=0,
     vad_filter=True
   )
+  detected_lang = info.language
+  lang_prob = info.language_probability
   raw_text = "".join([s.text for s in raw_segments_gen]).strip().lower()
-  print(f"\n📢 [Initial Whisper Transcription: '{raw_text}']")
+  
+  print(f"\n📢 [Detected Language: {detected_lang} ({lang_prob:.2f})]")
+  print(f"📢 [Initial Whisper Transcription: '{raw_text}']")
+
+  # 0-1. 언어 불일치 가드 및 정밀 전사
+  # 감지된 언어가 목표 언어와 확연히 다를 경우(특히 한국어) 즉시 차단
+  if detected_lang != language and lang_prob > 0.7:
+    lang_names = {"ko": "한국어", "en": "영어", "zh": "중국어", "ja": "일본어"}
+    target_name = lang_names.get(language, language)
+    detected_name = lang_names.get(detected_lang, detected_lang)
+    
+    print(f"⚠️ Language Mismatch: Detected {detected_name} instead of {target_name}")
+    return {
+      "language": language,
+      "expected": expected_word,
+      "recognized_text": raw_text,
+      "score": 0,
+      "feedback": f"👉 {detected_name}로 말씀하신 것 같아요. 설정된 언어({target_name})로 다시 말씀해 주세요!",
+      "word_details": [],
+      "char_segments": [],
+      "word_segments": []
+    }
+  else:
+    # 언어가 일치하거나 확신도가 낮을 경우, 목표 언어로 고정하여 정밀 전사 재실행
+    # 이를 통해 발음이 다소 부정확하더라도 목표 언어 내에서 가장 유사한 텍스트를 얻을 수 있습니다.
+    print(f"✨ Refining transcription with fixed language: {language}")
+    raw_segments_gen, _ = model.model.transcribe(
+      audio_np, 
+      language=language,
+      temperature=0,
+      vad_filter=True
+    )
+    raw_text = "".join([s.text for s in raw_segments_gen]).strip().lower()
+    print(f"📢 [Refined Whisper Transcription: '{raw_text}']")
 
   # 1. 모든 후보군에 대해 정렬 실행 및 결과 수집
   candidate_results = {}
@@ -93,7 +128,7 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
       difficulty=difficulty,
       mode=mode,
       candidate_results=candidate_results,
-      feedback_map=feedback_map
+      feedback_map=feedback_map,
     )
 
     actual_text = evaluation["recognized_text"]
