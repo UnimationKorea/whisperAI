@@ -6,7 +6,8 @@ steps:
       'build',
       '-t', 'gcr.io/$PROJECT_ID/whisper-backend:$COMMIT_SHA',
       '-t', 'gcr.io/$PROJECT_ID/whisper-backend:latest',
-      '.'
+      '-f', 'backend/Dockerfile', # Dockerfile 위치 지정
+      'backend/' # 빌드 컨텍스트를 backend 폴더로 설정
     ]
 
   # 2. 빌드된 이미지를 Artifact Registry / GCR에 푸시
