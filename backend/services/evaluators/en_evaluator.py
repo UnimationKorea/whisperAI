@@ -10,16 +10,16 @@ class EnglishEvaluator(BaseEvaluator):
   def __init__(self):
     self.g2p = G2p()
 
-  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, mode: str = "word", feedback_map: dict = None) -> dict:
+  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, mode: str = "word") -> dict:
     """
     영어 평가 메인 진입점: 모드(단어/문장)에 따라 채점 로직을 분기합니다.
     """
     if mode == "sentence":
-      return self._evaluate_sentence(expected, raw_text, candidate_results, difficulty)
+      return self._evaluate_sentence(expected, raw_text, candidate_results)
     else:
-      return self._evaluate_word(expected, candidates, raw_text, candidate_results, difficulty, feedback_map)
+      return self._evaluate_word(expected, candidates, raw_text, candidate_results)
 
-  def _evaluate_word(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, feedback_map: dict = None) -> dict:
+  def _evaluate_word(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None) -> dict:
     """
     [단어 채점 로직]
     영어 전용 평가 로직: 
@@ -90,7 +90,6 @@ class EnglishEvaluator(BaseEvaluator):
     if highest_composite_score < 0.55:
       return {
         "score": 0,
-        "feedback": f"👉 전혀 다른 단어로 들려요. (인식: '{raw_text}') 다시 한 번 또박또박 발음해보세요.",
         "recognized_text": raw_text,
         "word_details": [{
           "idx": 0,
@@ -99,26 +98,32 @@ class EnglishEvaluator(BaseEvaluator):
           "is_correct": False,
           "score": 0
         }],
-        "aligned_result": best_aligned_result
+        "aligned_result": best_aligned_result,
+        "analysis_data": {
+          "expected_phonemes": expected_phonemes,
+          "recognized_phonemes": raw_phonemes, # raw_text(refined) 기반
+          "selected_phonemes": self.g2p(best_candidate),
+          "char_analysis": []
+        }
       }
 
     # 4. 최종 선택된 단어로 명확도(Clarity) 및 점수 산출
     actual = best_candidate
     aligned_segments = best_aligned_result.get("segments", []) if best_aligned_result else []
     
-    # 명확도 점수 계산
-    clarity_score = self._calculate_clarity_score(expected, aligned_segments)
+    # 명확도 점수 및 상세 분석 정보 계산
+    clarity_score, char_analysis = self._calculate_clarity_score(expected, aligned_segments)
 
-    # 순위 및 난이도 기반 점수 산출
-    score_gap = 5 + (difficulty - 1) * 5 
+    # 순위 기반 점수 산출
+    score_gap = 15 # 오답 후보 선택 시 단계별 감점 고정
     try:
       index = candidates.index(actual)
       base_score = 100 - (index * score_gap)
     except ValueError:
       base_score = 0
 
-    # 최종 점수 산출 (난이도 가중치 적용)
-    clarity_threshold = 60 + (difficulty * 4)
+    # 최종 점수 산출 (명확도 가중치 적용)
+    clarity_threshold = 70 # 명확도 합격 커트라인 고정
     if base_score >= 100 - score_gap:
       # 정답 후보인 경우 (1순위 후보)
       if clarity_score < clarity_threshold:
@@ -134,15 +139,18 @@ class EnglishEvaluator(BaseEvaluator):
       # 후보군에 없는 경우
       final_score = 0
 
-    # 전문가 모드(5단계) 보정: 정답이더라도 발음이 완벽하지 않으면 100점을 주지 않음
-    if difficulty >= 5 and actual == expected and clarity_score < 95:
-      final_score = min(95, final_score)
-    elif actual == expected and clarity_score >= 92:
-      final_score = 100 # 일반 모드 100점 보정
+    # 최종 점수 보정 (92점 이상이면 100점으로 처리)
+    if actual == expected and clarity_score >= 92:
+      final_score = 100
 
-    # 3. 피드백 생성 및 상세 정보 구성
-    feedback = self._generate_candidate_feedback(expected, actual, final_score, clarity_score, feedback_map)
+    # 인식어(refined_raw_text)의 음소 추출
+    recognized_phonemes = self.g2p(raw_text)
+    recognized_phonemes = [p for p in recognized_phonemes if re.match(r'\w+', p)]
     
+    # 선택된 후보 단어의 음소 추출
+    selected_phonemes = self.g2p(actual)
+    selected_phonemes = [p for p in selected_phonemes if re.match(r'\w+', p)]
+
     word_details = [{
       "idx": 0,
       "expected": expected,
@@ -152,13 +160,18 @@ class EnglishEvaluator(BaseEvaluator):
 
     return {
       "score": min(100, max(0, final_score)),
-      "feedback": feedback,
       "recognized_text": actual,
       "word_details": word_details,
-      "aligned_result": best_aligned_result
+      "aligned_result": best_aligned_result,
+      "analysis_data": {
+        "expected_phonemes": expected_phonemes,
+        "recognized_phonemes": recognized_phonemes,
+        "selected_phonemes": selected_phonemes,
+        "char_analysis": char_analysis
+      }
     }
 
-  def _evaluate_sentence(self, expected: str, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3) -> dict:
+  def _evaluate_sentence(self, expected: str, raw_text: str = "", candidate_results: dict = None) -> dict:
     """
     [문장 채점 로직]
     문장 내 개별 단어들의 발음 정확도를 분석하여 종합 점수를 산출합니다.
@@ -182,6 +195,7 @@ class EnglishEvaluator(BaseEvaluator):
 
     word_scores = []
     missing_words = []
+    word_analysis = [] # 분석 데이터 수집용 리스트 초기화
     
     # 정렬된 데이터에서 단어별 정보를 추출합니다.
     aligned_words = []
@@ -241,17 +255,25 @@ class EnglishEvaluator(BaseEvaluator):
         else:
           status = f"Low confidence ({int(score_val*100)})"
         print(f"  - '{target_w}': ⚠️ Missing / {status}")
+        word_score = 0
+      
+      # 분석 데이터용 정보 추가
+      word_analysis.append({
+        "target_w": target_w,
+        "word_score": word_score
+      })
 
     # 2. 문장 점수 산출
-    # (인식된 단어 비율 * 0.4) + (인식된 단어들의 평균 명확도 * 0.6)
+    # (인식된 단어 비율 * 0.4) + (인식된 단어들의 평균 명확도 * 0.6) - 고정 가중치 적용
     match_ratio = matched_count / len(expected_words)
     avg_clarity = (total_clarity / matched_count) if matched_count > 0 else 0
     
-    # 난이도 보정 (난이도가 높을수록 문장 전체의 완결성을 중시)
-    match_weight = 0.3 + (difficulty * 0.05)
-    clarity_weight = 1.0 - match_weight
+    match_weight = 0.4
+    clarity_weight = 0.6
     
     final_score = int((match_ratio * 100 * match_weight) + (avg_clarity * clarity_weight))
+    
+
     
     # 3. 피드백 생성
     if match_ratio == 1.0:
@@ -335,10 +357,12 @@ class EnglishEvaluator(BaseEvaluator):
 
     return {
       "score": min(100, max(0, final_score)),
-      "feedback": feedback,
       "recognized_text": raw_text, # 문장 모드에서는 Whisper가 들은 그대로를 보여줌
       "word_details": word_details, # 상세 데이터 추가
-      "aligned_result": best_aligned_result
+      "aligned_result": best_aligned_result,
+      "analysis_data": {
+        "word_analysis": word_analysis
+      }
     }
 
   def _levenshtein_distance(self, s1, s2):
@@ -359,10 +383,11 @@ class EnglishEvaluator(BaseEvaluator):
       previous_row = current_row
     return previous_row[-1]
 
-  def _calculate_clarity_score(self, expected: str, aligned_segments: list) -> int:
+  def _calculate_clarity_score(self, expected: str, aligned_segments: list):
     """철자별 신뢰도를 평균내어 발음의 명확도 점수 계산"""
     total_score = 0
     char_count = 0
+    char_analysis = []
     
     print(f"--- [Clarity Calculation: {expected}] ---")
     for segment in aligned_segments:
@@ -374,37 +399,16 @@ class EnglishEvaluator(BaseEvaluator):
         char_score = c.get("score", 0)
         total_score += char_score
         char_count += 1
+        char_analysis.append({"char": char_val, "score": char_score})
         print(f"  └ '{char_val}': {char_score:.4f}")
     
     if char_count == 0:
       print("⚠️ No character scores found.")
-      return 0
+      return 0, []
       
     avg_score = total_score / char_count
     final_clarity = int(avg_score * 100)
     print(f"📊 Final Clarity: {final_clarity} (Average: {avg_score:.4f})")
     print("------------------------------------------\n")
-    return final_clarity
+    return final_clarity, char_analysis
 
-  def _generate_candidate_feedback(self, expected: str, actual: str, score: int, clarity: int, feedback_map: dict = None) -> str:
-    """선택된 후보 단어에 따른 맞춤형 피드백"""
-    
-    # 정답과 일치하는 경우
-    if expected == actual:
-      if clarity >= 90:
-        return f"완벽합니다! (점수: {score}) 원어민 같은 발음이에요. 👍"
-      elif clarity >= 70:
-        return f"정답입니다! (점수: {score}) 발음을 조금만 더 또박또박 하면 100점을 받을 수 있어요."
-      else:
-        return f"단어는 맞았지만 발음이 흐릿해요. (점수: {score}) 더 큰 소리로 명확하게 발음해보세요!"
-    
-    # 프론트엔드에서 받은 피드백 맵에서 해당 인식 결과에 대한 피드백이 있는지 확인
-    specific_feedback = None
-    if feedback_map:
-      # feedback_map 구조: {"인식단어": "피드백문구", ...}
-      specific_feedback = feedback_map.get(actual)
-
-    if specific_feedback:
-      return f"{specific_feedback} (점수: {score})"
-
-    return f"👉 '{expected}'와 약간 다르게 들려요. (인식: '{actual}', 점수: {score})"

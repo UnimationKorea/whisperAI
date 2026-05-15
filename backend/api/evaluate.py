@@ -21,7 +21,7 @@ def get_align_model(language_code, device):
     align_models[language_code] = whisperx.load_align_model(language_code=language_code, device=device)
   return align_models[language_code]
 
-async def run_evaluation_process(model, device, audio_np, expected_word, language="en", difficulty=3, mode="word", candidates=None, feedback_map=None):
+async def run_evaluation_process(model, device, audio_np, expected_word, language="en", mode="word", candidates=None):
   """
   Multi-Alignment Scoring: 후보군 중 가장 유사한 발음을 탐색합니다.
   """
@@ -44,10 +44,10 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
   )
   detected_lang = info.language
   lang_prob = info.language_probability
-  raw_text = "".join([s.text for s in raw_segments_gen]).strip().lower()
+  initial_raw_text = "".join([s.text for s in raw_segments_gen]).strip().lower()
   
   print(f"\n📢 [Detected Language: {detected_lang} ({lang_prob:.2f})]")
-  print(f"📢 [Initial Whisper Transcription: '{raw_text}']")
+  print(f"📢 [Initial Whisper Transcription: '{initial_raw_text}']")
 
   # 0-1. 언어 불일치 가드 및 정밀 전사
   # 감지된 언어가 목표 언어와 확연히 다를 경우(특히 한국어) 즉시 차단
@@ -60,12 +60,17 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
     return {
       "language": language,
       "expected": expected_word,
-      "recognized_text": raw_text,
+      "recognized_text": initial_raw_text,
       "score": 0,
-      "feedback": f"👉 {detected_name}로 말씀하신 것 같아요. 설정된 언어({target_name})로 다시 말씀해 주세요!",
+      # "error": f"{detected_name}로 감지되었습니다. {target_name}로 다시 말씀해 주세요.",
+      "error": "Language Mismatch", 
       "word_details": [],
       "char_segments": [],
-      "word_segments": []
+      "word_segments": [],
+      "analysis_data": {
+        "initial_raw_text": initial_raw_text,
+        "refined_raw_text": ""
+      }
     }
   else:
     # 언어가 일치하거나 확신도가 낮을 경우, 목표 언어로 고정하여 정밀 전사 재실행
@@ -77,8 +82,8 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
       temperature=0,
       vad_filter=True
     )
-    raw_text = "".join([s.text for s in raw_segments_gen]).strip().lower()
-    print(f"📢 [Refined Whisper Transcription: '{raw_text}']")
+    refined_raw_text = "".join([s.text for s in raw_segments_gen]).strip().lower()
+    print(f"📢 [Refined Whisper Transcription: '{refined_raw_text}']")
 
   # 1. 모든 후보군에 대해 정렬 실행 및 결과 수집
   candidate_results = {}
@@ -123,12 +128,10 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
     evaluation = evaluate_pronunciation(
       expected_word, 
       candidates, 
-      raw_text=raw_text,
+      raw_text=refined_raw_text,
       language=language,
-      difficulty=difficulty,
       mode=mode,
       candidate_results=candidate_results,
-      feedback_map=feedback_map,
     )
 
     actual_text = evaluation["recognized_text"]
@@ -142,9 +145,14 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
       "recognized_text": actual_text,
       "score": evaluation.get("score", 0),
       "word_details": evaluation.get("word_details", []),
-      "feedback": evaluation.get("feedback", ""),
       "char_segments": best_result_aligned.get("char_segments", []) if best_result_aligned else [],
-      "word_segments": best_result_aligned.get("word_segments", []) if best_result_aligned else []
+      "word_segments": best_result_aligned.get("word_segments", []) if best_result_aligned else [],
+      "analysis_data": {
+        "initial_raw_text": initial_raw_text,
+        "refined_raw_text": refined_raw_text,
+        **evaluation.get("analysis_data", {})
+      },
+      "error": evaluation.get("error")
     }
     
   except Exception as e:
@@ -154,11 +162,10 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
       "expected": expected_word,
       "recognized_text": "recognition_error",
       "score": 0,
-      "feedback": f"분석 오류: {str(e)}",
+      "error": str(e),
       "word_details": [],
       "char_segments": [],
-      "word_segments": [],
-      "error": str(e)
+      "word_segments": []
     }
 
 # --------------------------------------------------
@@ -170,25 +177,20 @@ async def evaluate(
   file: UploadFile = File(...), 
   expected: str = Form(...),
   language: str = Form("en"),
-  difficulty: int = Form(3),
   mode: str = Form("word"),
-  candidates: str = Form(None),   # JSON string
-  feedback_map: str = Form(None)  # JSON string
+  candidates: str = Form(None)   # JSON string
 ):
   model = request.app.state.model
   device = getattr(request.app.state, "device", "cpu")
   
   # JSON 문자열 파싱
   parsed_candidates = None
-  parsed_feedback_map = None
   
   try:
     if candidates:
       parsed_candidates = json.loads(candidates)
-    if feedback_map:
-      parsed_feedback_map = json.loads(feedback_map)
   except Exception as e:
-    logger.warning(f"Failed to parse candidates or feedback_map: {e}")
+    logger.warning(f"Failed to parse candidates: {e}")
 
   try:
     # 1. 파일 데이터 읽기
@@ -199,8 +201,8 @@ async def evaluate(
       # 2-1. Raw PCM 처리 (FFmpeg 불필요, 로컬 실행용)
       audio_np = np.frombuffer(file_bytes, dtype=np.int16).astype(np.float32) / 32768.0
       result = await run_evaluation_process(
-        model, device, audio_np, expected, language, difficulty, mode, 
-        candidates=parsed_candidates, feedback_map=parsed_feedback_map
+        model, device, audio_np, expected, language, mode, 
+        candidates=parsed_candidates
       )
     else:
       # 2-2. 표준 오디오 형식 처리 (FFmpeg 필요, Cloud Run/Docker용)
@@ -211,22 +213,23 @@ async def evaluate(
       try:
         audio_np = whisperx.load_audio(tmp_path)
         result = await run_evaluation_process(
-          model, device, audio_np, expected, language, difficulty, mode, 
-          candidates=parsed_candidates, feedback_map=parsed_feedback_map
+          model, device, audio_np, expected, language, mode, 
+          candidates=parsed_candidates
         )
       finally:
         if os.path.exists(tmp_path):
           os.remove(tmp_path)
 
     return {
-      "language": result["language"],
-      "expected": expected,
-      "recognized_text": result["recognized_text"],
-      "score": result["score"],
-      "feedback": result["feedback"],
-      "word_details": result.get("word_details", []),
-      "char_segments": result.get("char_segments", []),
-      "word_segments": result.get("word_segments", [])
+      "language": result["language"], # 언어
+      "expected": expected, # 정답
+      "recognized_text": result["recognized_text"], # recognized text
+      "score": result["score"], # 발음 점수
+      "word_details": result.get("word_details", []), # 단어별 발음 점수
+      "char_segments": result.get("char_segments", []), # 문자별 발음 점수
+      "word_segments": result.get("word_segments", []), # 단어별 발음 점수
+      "analysis_data": result.get("analysis_data", {}), # 분석 데이터
+      "error": result.get("error", None) # 오류 메시지
     }
 
   except Exception as e:

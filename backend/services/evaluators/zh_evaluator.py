@@ -7,14 +7,33 @@ from .base import BaseEvaluator
 logger = logging.getLogger(__name__)
 
 class ChineseEvaluator(BaseEvaluator):
-  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, mode: str = "word", feedback_map: dict = None) -> dict:
+  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, mode: str = "word") -> dict:
     """
     중국어 평가 메인 진입점
     """
     if mode == "sentence":
-      return self._evaluate_sentence(expected, raw_text, candidate_results, difficulty)
+      return self._evaluate_sentence(expected, raw_text, candidate_results)
     else:
-      return self._evaluate_word(expected, candidates, raw_text, candidate_results, difficulty, feedback_map)
+      return self._evaluate_word(expected, candidates, raw_text, candidate_results)
+
+  def _get_pinyin_details(self, text: str):
+    """
+    한자를 병음과 성조 객체 리스트로 반환합니다.
+    예: "你好" -> [{"char": "你", "pinyin": "ni", "tone": 3}, {"char": "好", "pinyin": "hao", "tone": 3}]
+    """
+    if not text:
+      return []
+    py_list = pinyin(text, style=Style.TONE3, neutral_tone_with_five=True)
+    results = []
+    for i, item in enumerate(py_list):
+      token = item[0]
+      char = text[i] if i < len(text) else ""
+      match = re.match(r'([a-z]+)([1-5])', token.lower())
+      if match:
+        results.append({"char": char, "pinyin": match.group(1), "tone": int(match.group(2))})
+      else:
+        results.append({"char": char, "pinyin": token.lower(), "tone": 5})
+    return results
 
   def _get_pinyin_tone(self, text: str):
     """
@@ -37,7 +56,7 @@ class ChineseEvaluator(BaseEvaluator):
         results.append((token.lower(), 5))
     return results
 
-  def _evaluate_word(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3, feedback_map: dict = None) -> dict:
+  def _evaluate_word(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None) -> dict:
     """
     중국어 단어 평가 로직 (후보군 매칭 + 병음 유사도 + 성조 분석)
     """
@@ -101,7 +120,6 @@ class ChineseEvaluator(BaseEvaluator):
     if highest_composite_score < 0.55:
       return {
         "score": 0,
-        "feedback": f"👉 전혀 다른 단어로 들려요. (인식: '{raw_text}') 다시 한 번 또박또박 발음해보세요.",
         "recognized_text": raw_text,
         "word_details": [{
           "idx": 0,
@@ -110,7 +128,12 @@ class ChineseEvaluator(BaseEvaluator):
           "is_correct": False,
           "score": 0
         }],
-        "aligned_result": best_aligned_result
+        "aligned_result": best_aligned_result,
+        "analysis_data": {
+          "expected_pinyin": self._get_pinyin_details(expected),
+          "recognized_pinyin": self._get_pinyin_details(raw_text), # raw_text(refined) 기반
+          "selected_pinyin": self._get_pinyin_details(best_candidate)
+        }
       }
 
     # 2. 최종 점수 및 피드백 산출
@@ -121,7 +144,7 @@ class ChineseEvaluator(BaseEvaluator):
     clarity_score = self._calculate_clarity_score(expected, aligned_segments)
 
     # 후보 순위에 따른 감점 로직 (틀린 후보를 선택했을 경우 점수 차감)
-    score_gap = 10 + (difficulty - 1) * 3
+    score_gap = 15 # 오답 단계별 감점 고정
     try:
       index = candidates.index(actual)
       base_score = 100 - (index * score_gap) if actual != expected else 100
@@ -129,23 +152,18 @@ class ChineseEvaluator(BaseEvaluator):
       base_score = 0
 
     # 명확도 기반 최종 점수 보정 (발음이 흐릿하면 추가 감점)
-    clarity_threshold = 45 + (difficulty * 5)
+    clarity_threshold = 60 # 명확도 커트라인 고정
     if actual == expected:
       if clarity_score < clarity_threshold:
         final_score = int(base_score * (clarity_score / clarity_threshold))
       else:
-        # 고득점 보정
+        # 고득점 보정 (92점 이상이면 100점으로 처리)
         final_score = base_score
-        if difficulty >= 5 and clarity_score < 95:
-          final_score = min(95, final_score)
-        elif clarity_score >= 92:
+        if clarity_score >= 92:
           final_score = 100
     else:
       # 오답 후보 선택 시 명확도 비율대로 점수 적용
       final_score = int(base_score * (clarity_score / 100))
-
-    # 피드백 생성
-    feedback = self._generate_candidate_feedback(expected, actual, final_score, clarity_score, feedback_map)
 
     # 상세 정보 구성
     word_details = [{
@@ -158,13 +176,17 @@ class ChineseEvaluator(BaseEvaluator):
 
     return {
       "score": max(0, min(100, final_score)),
-      "feedback": feedback,
       "recognized_text": actual,
       "word_details": word_details,
-      "aligned_result": best_aligned_result
+      "aligned_result": best_aligned_result,
+      "analysis_data": {
+        "expected_pinyin": self._get_pinyin_details(expected),
+        "recognized_pinyin": self._get_pinyin_details(raw_text), # raw_text(refined) 기반
+        "selected_pinyin": self._get_pinyin_details(actual)
+      }
     }
 
-  def _evaluate_sentence(self, expected: str, raw_text: str = "", candidate_results: dict = None, difficulty: int = 3) -> dict:
+  def _evaluate_sentence(self, expected: str, raw_text: str = "", candidate_results: dict = None) -> dict:
     """
     중국어 문장 평가 로직: 글자 단위 정렬 및 성조 분석
     """
@@ -265,12 +287,10 @@ class ChineseEvaluator(BaseEvaluator):
     # 가중치 합산: 텍스트 일치(70%) + 발음 명확도(30%)
     final_score = int((avg_score * 0.7) + (clarity_score * 0.3))
 
-    # 난이도 보정 (고난도일수록 성조 오류에 엄격함)
-    if difficulty >= 4:
-      # 고난도: 성조가 하나라도 틀리면 감점 대폭 강화
-      tone_errors = sum(1 for d in word_details if d.get("tone_error"))
-      if tone_errors > 0:
-        final_score = min(final_score, 85 - (tone_errors * 5))
+    # 성조 보정 (성조가 틀리면 감점 적용)
+    tone_errors = sum(1 for d in word_details if d.get("tone_error"))
+    if tone_errors > 0:
+      final_score = min(final_score, 85 - (tone_errors * 5))
 
     # 3. 맞춤형 피드백 생성
     tone_error_chars = [d["expected"] for d in word_details if d.get("tone_error")]
@@ -288,10 +308,13 @@ class ChineseEvaluator(BaseEvaluator):
 
     return {
       "score": max(0, min(100, final_score)),
-      "feedback": feedback,
       "recognized_text": raw_text,
       "word_details": word_details,
-      "aligned_result": best_aligned_result
+      "aligned_result": best_aligned_result,
+      "analysis_data": {
+        "expected_pinyin": self._get_pinyin_details(expected_clean),
+        "recognized_pinyin": self._get_pinyin_details(raw_clean)
+      }
     }
 
   def _levenshtein_distance(self, s1, s2):
@@ -324,18 +347,3 @@ class ChineseEvaluator(BaseEvaluator):
       return 0
     return int((total_score / char_count) * 100)
 
-  def _generate_candidate_feedback(self, expected: str, actual: str, score: int, clarity: int, feedback_map: dict = None) -> str:
-    """선택된 후보 단어에 따른 맞춤형 한국어 피드백 생성"""
-    if expected == actual:
-      if clarity >= 90:
-        return f"완벽합니다! (점수: {score}) 정확한 성조와 발음이에요. 👍"
-      elif clarity >= 70:
-        return f"정답입니다! (점수: {score}) 성조를 조금만 더 명확하게 발음해보세요."
-      else:
-        return f"단어는 맞았지만 발음이 다소 흐릿해요. (점수: {score}) 더 또박또박 발음해보세요!"
-    
-    specific_feedback = feedback_map.get(actual) if feedback_map else None
-    if specific_feedback:
-      return f"{specific_feedback} (점수: {score})"
-
-    return f"👉 '{expected}'와 다르게 들려요. (인식: '{actual}', 점수: {score})"
