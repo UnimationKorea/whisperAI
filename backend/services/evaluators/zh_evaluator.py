@@ -123,8 +123,8 @@ class ChineseEvaluator(BaseEvaluator):
         "recognized_text": raw_text,
         "error": { "code": "1302", "msg": "Different word detected" }, # 전혀 다른 단어를 말한 것으로 판단함 (Precondition Failed)
         "analysis_data": {
-          "expected_pinyin": self._get_pinyin_details(expected),
-          "recognized_pinyin": self._get_pinyin_details(raw_text), # raw_text(refined) 기반
+          "expected": self._get_pinyin_details(expected),
+          "recognized": self._get_pinyin_details(raw_text), # raw_text(refined) 기반
           # word_details와 aligned_result를 analysis_data 내부로 통합합니다.
           "word_details": [{
             "idx": 0,
@@ -143,12 +143,10 @@ class ChineseEvaluator(BaseEvaluator):
     aligned_segments = best_aligned_result.get("segments", []) if best_aligned_result else []
     clarity_score = self._calculate_clarity_score(expected, aligned_segments)
 
-    # 후보 순위에 따른 감점 로직 (틀린 후보를 선택했을 경우 점수 차감)
-    score_gap = 15 # 오답 단계별 감점 고정
-    try:
-      index = candidates.index(actual)
-      base_score = 100 - (index * score_gap) if actual != expected else 100
-    except ValueError:
+    # 기본 점수 산출 (차등 감점 제거)
+    if actual in candidates:
+      base_score = 100
+    else:
       base_score = 0
 
     # 명확도 기반 최종 점수 보정 (발음이 흐릿하면 추가 감점)
@@ -178,9 +176,9 @@ class ChineseEvaluator(BaseEvaluator):
       "score": max(0, min(100, final_score)),
       "recognized_text": actual,
       "analysis_data": {
-        "expected_pinyin": self._get_pinyin_details(expected),
-        "recognized_pinyin": self._get_pinyin_details(raw_text), # raw_text(refined) 기반
-        "selected_pinyin": self._get_pinyin_details(actual),
+        "expected": self._get_pinyin_details(expected),
+        "recognized": self._get_pinyin_details(raw_text), # raw_text(refined) 기반
+        "selected": self._get_pinyin_details(actual),
         # word_details와 aligned_result를 analysis_data 내부로 통합합니다.
         "word_details": word_details,
         "aligned_result": best_aligned_result
@@ -320,8 +318,8 @@ class ChineseEvaluator(BaseEvaluator):
       "score": max(0, min(100, final_score)),
       "recognized_text": raw_text,
       "analysis_data": {
-        "expected_pinyin": self._get_pinyin_details(expected_clean),
-        "recognized_pinyin": recognized_pinyin_details,
+        "expected": self._get_pinyin_details(expected_clean),
+        "recognized": recognized_pinyin_details,
         # word_details와 aligned_result를 analysis_data 내부로 통합합니다.
         "word_details": word_details,
         "aligned_result": best_aligned_result

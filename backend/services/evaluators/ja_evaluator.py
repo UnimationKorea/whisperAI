@@ -108,17 +108,20 @@ class JapaneseEvaluator(BaseEvaluator):
     actual = best_candidate
     actual_kana = self._to_hiragana(actual)
     actual_mora = self._count_mora(actual_kana)
+
+    # Whisper가 실제 인식한 원본 텍스트(raw_text) 정보 추출
+    raw_hira = self._to_hiragana(raw_text)
+    raw_mora = self._count_mora(raw_hira)
+    raw_align = candidate_results.get(raw_text, {}).get("avg_score", 0) if (candidate_results and raw_text in candidate_results) else 0
     
     # 발음 명확도(Clarity)
     aligned_segments = best_aligned_result.get("segments", []) if best_aligned_result else []
     clarity_score = self._calculate_clarity_score(expected, aligned_segments)
     
-    # 후보 순위에 따른 감점
-    score_gap = 15
-    try:
-      index = candidates.index(actual)
-      base_score = 100 - (index * score_gap) if actual != expected else 100
-    except ValueError:
+    # 기본 점수 산출 (차등 감점 제거)
+    if actual in candidates:
+      base_score = 100
+    else:
       base_score = 0
       
     # Mora(박자) 차이에 따른 추가 페널티
@@ -150,6 +153,11 @@ class JapaneseEvaluator(BaseEvaluator):
           "align": candidate_results.get(expected, {}).get("avg_score", 0) if candidate_results else 0
         },
         "recognized": {
+          "kana": raw_hira,
+          "mora": raw_mora,
+          "align": raw_align
+        },
+        "selected": {
           "kana": actual_kana,
           "mora": actual_mora,
           "align": candidate_results.get(actual, {}).get("avg_score", 0) if candidate_results else 0

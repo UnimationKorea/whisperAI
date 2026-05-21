@@ -93,8 +93,8 @@ class EnglishEvaluator(BaseEvaluator):
         "recognized_text": raw_text,
         "error": { "code": "1302", "msg": "Different word detected" }, # 전혀 다른 단어를 말한 것으로 판단함 (Precondition Failed)
         "analysis_data": {
-          "expected_phonemes": expected_phonemes,
-          "recognized_phonemes": raw_phonemes, # raw_text(refined) 기반
+          "expected": expected_phonemes,
+          "recognized": raw_phonemes, # raw_text(refined) 기반
           # "selected_phonemes": self.g2p(best_candidate),
           "char_analysis": [],
           "word_details": [{
@@ -115,26 +115,26 @@ class EnglishEvaluator(BaseEvaluator):
     # 명확도 점수 및 상세 분석 정보 계산
     clarity_score, char_analysis = self._calculate_clarity_score(expected, aligned_segments)
 
-    # 순위 기반 점수 산출
-    score_gap = 15 # 오답 후보 선택 시 단계별 감점 고정
-    try:
-      index = candidates.index(actual)
-      base_score = 100 - (index * score_gap)
-    except ValueError:
+    # 기본 점수 산출 (차등 감점 제거)
+    if actual == expected:
+      base_score = 100
+    elif actual in candidates:
+      base_score = 100
+    else:
       base_score = 0
 
     # 최종 점수 산출 (명확도 가중치 적용)
     clarity_threshold = 70 # 명확도 합격 커트라인 고정
-    if base_score >= 100 - score_gap:
-      # 정답 후보인 경우 (1순위 후보)
+    if actual == expected:
+      # 정답 후보인 경우
       if clarity_score < clarity_threshold:
         # 명확도가 낮으면 커트라인 비율대로 감점
         final_score = int(base_score * (clarity_score / clarity_threshold))
       else:
         # 커트라인 넘으면 기본 점수 유지
         final_score = base_score
-    elif base_score > 0:
-      # 오답 후보인 경우 (2순위 이하) 명확도 비율대로 적용
+    elif actual in candidates:
+      # 오답 후보인 경우 명확도 비율대로 적용
       final_score = int(base_score * (clarity_score / 100))
     else:
       # 후보군에 없는 경우
@@ -163,9 +163,9 @@ class EnglishEvaluator(BaseEvaluator):
       "score": min(100, max(0, final_score)),
       "recognized_text": actual,
       "analysis_data": {
-        "expected_phonemes": expected_phonemes,
-        "recognized_phonemes": recognized_phonemes,
-        "selected_phonemes": selected_phonemes,
+        "expected": expected_phonemes,
+        "recognized": recognized_phonemes,
+        "selected": selected_phonemes,
         "char_analysis": char_analysis,
         # word_details와 aligned_result를 analysis_data 내부로 통합합니다.
         "word_details": word_details,
