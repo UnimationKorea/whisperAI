@@ -48,6 +48,19 @@ function App() {
   // 난이도 변경 시 즉시 재계산
   useEffect(() => {
     if (serverData) {
+      if (serverData.error) {
+        const resultData = {
+          type: "result",
+          content: serverData.recognized_text || "",
+          target: serverData.expected || targetWord,
+          score: 0,
+          analysis_data: serverData.analysis_data || {},
+          error: serverData.error
+        };
+        setResult(resultData);
+        return;
+      }
+
       const finalClientScore = calculateClientScore(serverData, difficulty, practiceMode, language);
 
       const resultData = {
@@ -205,8 +218,8 @@ function App() {
         }
       } else {
         // 영어 단어 모드 채점
-        const expectedPhonemes = analysis.expected_phonemes || [];
-        const recognizedPhonemes = analysis.recognized_phonemes || [];
+        const expectedPhonemes = analysis.expected || [];
+        const recognizedPhonemes = analysis.recognized || [];
         const charAnalysis = analysis.char_analysis || [];
 
         // 1. 음소 일치도 계산
