@@ -14,7 +14,10 @@ COPY . .
 ENV PORT=8080 \
     WHISPER_MODEL=base \
     WHISPER_DEVICE=cpu \
-    WHISPER_COMPUTE_TYPE=int8
+    WHISPER_COMPUTE_TYPE=int8 \
+    HF_HOME=/root/.cache \
+    TORCH_HOME=/root/.cache \
+    XDG_CACHE_HOME=/root/.cache
 
 # 5. 앱 실행 (Cloud Run 표준 포트 대응)
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]

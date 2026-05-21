@@ -29,6 +29,10 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--cpu-boost' # 🚀 컨테이너 시작 시 CPU 부스트 (구동 속도 향상)
+      - '--memory'
+      - '4Gi'
+      - '--cpu'
+      - '2'
 
 options:
   # 서비스 계정 권한 관련 에러 방지를 위한 로깅 설정
