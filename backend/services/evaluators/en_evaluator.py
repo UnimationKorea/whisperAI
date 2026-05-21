@@ -91,20 +91,21 @@ class EnglishEvaluator(BaseEvaluator):
       return {
         "score": 0,
         "recognized_text": raw_text,
-        "word_details": [{
-          "idx": 0,
-          "expected": expected,
-          "actual": raw_text,
-          "is_correct": False,
-          "score": 0
-        }],
-        "aligned_result": best_aligned_result,
+        "error": { "code": "1302", "msg": "Different word detected" }, # 전혀 다른 단어를 말한 것으로 판단함 (Precondition Failed)
         "analysis_data": {
           "expected_phonemes": expected_phonemes,
           "recognized_phonemes": raw_phonemes, # raw_text(refined) 기반
-          "selected_phonemes": self.g2p(best_candidate),
-          "char_analysis": []
-        }
+          # "selected_phonemes": self.g2p(best_candidate),
+          "char_analysis": [],
+          "word_details": [{
+            "idx": 0,
+            "expected": expected,
+            "actual": raw_text,
+            "is_correct": False,
+            "score": 0
+          }],
+          # "aligned_result": best_aligned_result
+        },
       }
 
     # 4. 최종 선택된 단어로 명확도(Clarity) 및 점수 산출
@@ -161,13 +162,14 @@ class EnglishEvaluator(BaseEvaluator):
     return {
       "score": min(100, max(0, final_score)),
       "recognized_text": actual,
-      "word_details": word_details,
-      "aligned_result": best_aligned_result,
       "analysis_data": {
         "expected_phonemes": expected_phonemes,
         "recognized_phonemes": recognized_phonemes,
         "selected_phonemes": selected_phonemes,
-        "char_analysis": char_analysis
+        "char_analysis": char_analysis,
+        # word_details와 aligned_result를 analysis_data 내부로 통합합니다.
+        "word_details": word_details,
+        "aligned_result": best_aligned_result
       }
     }
 
@@ -358,30 +360,13 @@ class EnglishEvaluator(BaseEvaluator):
     return {
       "score": min(100, max(0, final_score)),
       "recognized_text": raw_text, # 문장 모드에서는 Whisper가 들은 그대로를 보여줌
-      "word_details": word_details, # 상세 데이터 추가
-      "aligned_result": best_aligned_result,
       "analysis_data": {
-        "word_analysis": word_analysis
+        "word_analysis": word_analysis,
+        # word_details와 aligned_result를 analysis_data 내부로 통합합니다.
+        "word_details": word_details,
+        "aligned_result": best_aligned_result
       }
     }
-
-  def _levenshtein_distance(self, s1, s2):
-    """편집 거리 알고리즘 (음소 리스트 비교용)"""
-    if len(s1) < len(s2):
-      return self._levenshtein_distance(s2, s1)
-    if not s2:
-      return len(s1)
-    
-    previous_row = range(len(s2) + 1)
-    for i, c1 in enumerate(s1):
-      current_row = [i + 1]
-      for j, c2 in enumerate(s2):
-        insertions = previous_row[j + 1] + 1
-        deletions = current_row[j] + 1
-        substitutions = previous_row[j] + (c1 != c2)
-        current_row.append(min(insertions, deletions, substitutions))
-      previous_row = current_row
-    return previous_row[-1]
 
   def _calculate_clarity_score(self, expected: str, aligned_segments: list):
     """철자별 신뢰도를 평균내어 발음의 명확도 점수 계산"""

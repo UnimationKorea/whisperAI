@@ -121,18 +121,18 @@ class ChineseEvaluator(BaseEvaluator):
       return {
         "score": 0,
         "recognized_text": raw_text,
-        "word_details": [{
-          "idx": 0,
-          "expected": expected,
-          "actual": raw_text,
-          "is_correct": False,
-          "score": 0
-        }],
-        "aligned_result": best_aligned_result,
+        "error": { "code": "1302", "msg": "Different word detected" }, # 전혀 다른 단어를 말한 것으로 판단함 (Precondition Failed)
         "analysis_data": {
           "expected_pinyin": self._get_pinyin_details(expected),
           "recognized_pinyin": self._get_pinyin_details(raw_text), # raw_text(refined) 기반
-          "selected_pinyin": self._get_pinyin_details(best_candidate)
+          # word_details와 aligned_result를 analysis_data 내부로 통합합니다.
+          "word_details": [{
+            "idx": 0,
+            "expected": expected,
+            "actual": raw_text,
+            "is_correct": False,
+            "score": 0
+          }]
         }
       }
 
@@ -177,12 +177,13 @@ class ChineseEvaluator(BaseEvaluator):
     return {
       "score": max(0, min(100, final_score)),
       "recognized_text": actual,
-      "word_details": word_details,
-      "aligned_result": best_aligned_result,
       "analysis_data": {
         "expected_pinyin": self._get_pinyin_details(expected),
         "recognized_pinyin": self._get_pinyin_details(raw_text), # raw_text(refined) 기반
-        "selected_pinyin": self._get_pinyin_details(actual)
+        "selected_pinyin": self._get_pinyin_details(actual),
+        # word_details와 aligned_result를 analysis_data 내부로 통합합니다.
+        "word_details": word_details,
+        "aligned_result": best_aligned_result
       }
     }
 
@@ -220,6 +221,8 @@ class ChineseEvaluator(BaseEvaluator):
     print(f"[Debug] Expected Pinyin: {exp_py}")
     print(f"[Debug] Raw Pinyin: {raw_py}")
 
+    recognized_pinyin_details = self._get_pinyin_details(raw_clean)
+
     print(f"🔍 [Character-level Analysis]")
     for tag, i1, i2, j1, j2 in opcodes:
       # difflib의 opcode에 따라 매칭 정보 구성
@@ -235,9 +238,11 @@ class ChineseEvaluator(BaseEvaluator):
         
         if exp_char and raw_char:
           print(f"  - [{exp_char}] vs [{raw_char}]", end=" ")
+          sim_val = 0.0
           if exp_char == raw_char:
             # 1. 완벽히 일치
             char_score = 100
+            sim_val = 1.0
             print(f"    -> Exact Match! Score: {char_score}")
           else:
             # 2. 글자는 다르지만 발음/성조 체크
@@ -249,6 +254,7 @@ class ChineseEvaluator(BaseEvaluator):
             r_p, r_t = raw_py[raw_idx] if raw_idx < len(raw_py) else ("", 5)
             
             if e_p == r_p:
+              sim_val = 1.0
               if e_t == r_t:
                 # 글자 표기만 다르고(이체자 등) 발음/성조 동일
                 char_score = 90
@@ -259,9 +265,13 @@ class ChineseEvaluator(BaseEvaluator):
                 tone_error = True
                 print(f"    -> Pinyin Match, Tone Error ({e_t} vs {r_t}). Score: {char_score}")
             else:
-              # 발음 자체가 다름
+              # 발음 자체가 다름 (점수는 최하점 처리, 유사도 정보만 클라이언트에 전달)
+              sim_val = difflib.SequenceMatcher(None, e_p, r_p).ratio()
               char_score = 20
-              print(f"-> Pinyin Mismatch! {e_p} vs {r_p} ({char_score})")
+              print(f"    -> Pinyin Mismatch! {e_p} vs {r_p} (sim: {sim_val:.2f}). Score: {char_score}")
+          
+          if raw_idx is not None and raw_idx < len(recognized_pinyin_details):
+            recognized_pinyin_details[raw_idx]["similarity"] = round(sim_val, 2)
         elif exp_char:
           # 3. 누락됨
           char_score = 0
@@ -309,41 +319,12 @@ class ChineseEvaluator(BaseEvaluator):
     return {
       "score": max(0, min(100, final_score)),
       "recognized_text": raw_text,
-      "word_details": word_details,
-      "aligned_result": best_aligned_result,
       "analysis_data": {
         "expected_pinyin": self._get_pinyin_details(expected_clean),
-        "recognized_pinyin": self._get_pinyin_details(raw_clean)
+        "recognized_pinyin": recognized_pinyin_details,
+        # word_details와 aligned_result를 analysis_data 내부로 통합합니다.
+        "word_details": word_details,
+        "aligned_result": best_aligned_result
       }
     }
-
-  def _levenshtein_distance(self, s1, s2):
-    """편집 거리(Levenshtein Distance) 알고리즘 - 음소/병음 비교용"""
-    if len(s1) < len(s2):
-      return self._levenshtein_distance(s2, s1)
-    if not s2:
-      return len(s1)
-    previous_row = range(len(s2) + 1)
-    for i, c1 in enumerate(s1):
-      current_row = [i + 1]
-      for j, c2 in enumerate(s2):
-        insertions = previous_row[j + 1] + 1
-        deletions = current_row[j] + 1
-        substitutions = previous_row[j] + (c1 != c2)
-        current_row.append(min(insertions, deletions, substitutions))
-      previous_row = current_row
-    return previous_row[-1]
-
-  def _calculate_clarity_score(self, expected: str, aligned_segments: list) -> int:
-    """발음의 물리적 명확도(Acoustic Confidence) 점수 계산"""
-    total_score = 0
-    char_count = 0
-    for segment in aligned_segments:
-      chars = segment.get("chars", [])
-      for c in chars:
-        total_score += c.get("score", 0)
-        char_count += 1
-    if char_count == 0:
-      return 0
-    return int((total_score / char_count) * 100)
 

@@ -12,3 +12,33 @@ class BaseEvaluator(ABC):
     mode: 평가 모드 (word/sentence)
     """
     pass
+
+  def _calculate_clarity_score(self, expected: str, aligned_segments: list) -> int:
+    """발음의 물리적 명확도(Acoustic Confidence) 점수 계산"""
+    total_score = 0
+    char_count = 0
+    for segment in aligned_segments:
+      chars = segment.get("chars", [])
+      for c in chars:
+        total_score += c.get("score", 0)
+        char_count += 1
+    if char_count == 0:
+      return 0
+    return int((total_score / char_count) * 100)
+
+  def _levenshtein_distance(self, s1, s2):
+    """편집 거리(Levenshtein Distance) 알고리즘 - 음소/병음/발음 비교용"""
+    if len(s1) < len(s2):
+      return self._levenshtein_distance(s2, s1)
+    if not s2:
+      return len(s1)
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+      current_row = [i + 1]
+      for j, c2 in enumerate(s2):
+        insertions = previous_row[j + 1] + 1
+        deletions = current_row[j] + 1
+        substitutions = previous_row[j] + (c1 != c2)
+        current_row.append(min(insertions, deletions, substitutions))
+      previous_row = current_row
+    return previous_row[-1]

@@ -63,13 +63,9 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
       "recognized_text": initial_raw_text,
       "score": 0,
       # "error": f"{detected_name}로 감지되었습니다. {target_name}로 다시 말씀해 주세요.",
-      "error": "Language Mismatch", 
-      "word_details": [],
-      "char_segments": [],
-      "word_segments": [],
+      "error": { "code": "1301", "msg": "Language Mismatch" }, 
       "analysis_data": {
         "initial_raw_text": initial_raw_text,
-        "refined_raw_text": ""
       }
     }
   else:
@@ -94,8 +90,16 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
     
     print(f"🔍 [Multi-Alignment Search: {expected_word}]")
     for cand in candidates:
+      # Japanese(ja)의 경우, Wav2Vec2 정렬 모델이 한자(Kanji)를 인식하지 못하므로 히라가나로 변환하여 정렬을 수행합니다.
+      align_text = cand
+      if language == "ja":
+        import pykakasi
+        kks = pykakasi.kakasi()
+        converted = kks.convert(cand)
+        align_text = "".join([item['hira'] for item in converted])
+        
       # 후보 단어로 가상 세그먼트 생성
-      temp_segments = [{"start": 0, "end": duration, "text": cand}]
+      temp_segments = [{"start": 0, "end": duration, "text": align_text}]
       
       # 정렬 실행
       result_aligned = whisperx.align(
@@ -135,23 +139,27 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
     )
 
     actual_text = evaluation["recognized_text"]
-    best_result_aligned = evaluation.get("aligned_result", {})
+    # best_result_aligned = evaluation.get("aligned_result", {})
 
     print(f"✅ Final Choice: '{actual_text}'\n")
+
+    # word_segments를 aligned_result라는 이름으로 변환하여 analysis_data에 포함합니다.
+    # aligned_result_data = best_result_aligned.get("word_segments", []) if best_result_aligned else []
+    # analysis_data = {
+    #   **evaluation.get("analysis_data", {}),
+    #   "word_details": evaluation.get("word_details", []),
+    #   "aligned_result": aligned_result_data
+    # }
 
     return {
       "language": language,
       "expected": expected_word,
       "recognized_text": actual_text,
+      "initial_raw_text": initial_raw_text,
+      "refined_raw_text": refined_raw_text,
       "score": evaluation.get("score", 0),
-      "word_details": evaluation.get("word_details", []),
-      "char_segments": best_result_aligned.get("char_segments", []) if best_result_aligned else [],
-      "word_segments": best_result_aligned.get("word_segments", []) if best_result_aligned else [],
-      "analysis_data": {
-        "initial_raw_text": initial_raw_text,
-        "refined_raw_text": refined_raw_text,
-        **evaluation.get("analysis_data", {})
-      },
+      # 각 언어별 evaluator가 직접 조립해준 analysis_data를 그대로 반환합니다.
+      "analysis_data": evaluation.get("analysis_data", {}),
       "error": evaluation.get("error")
     }
     
@@ -162,10 +170,8 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
       "expected": expected_word,
       "recognized_text": "recognition_error",
       "score": 0,
-      "error": str(e),
-      "word_details": [],
-      "char_segments": [],
-      "word_segments": []
+      "analysis_data": {},
+      "error": { "code": "500", "msg": str(e) },
     }
 
 # --------------------------------------------------
@@ -224,10 +230,10 @@ async def evaluate(
       "language": result["language"], # 언어
       "expected": expected, # 정답
       "recognized_text": result["recognized_text"], # recognized text
+      "initial_raw_text": result.get("initial_raw_text", ""), # 초기 인식 텍스트
+      "refined_raw_text": result.get("refined_raw_text", ""), # 정제된 인식 텍스트
       "score": result["score"], # 발음 점수
-      "word_details": result.get("word_details", []), # 단어별 발음 점수
-      "char_segments": result.get("char_segments", []), # 문자별 발음 점수
-      "word_segments": result.get("word_segments", []), # 단어별 발음 점수
+      # word_details와 aligned_result가 analysis_data 내부에 포함되어 전달되므로 상위 필드에서 제거합니다.
       "analysis_data": result.get("analysis_data", {}), # 분석 데이터
       "error": result.get("error", None) # 오류 메시지
     }

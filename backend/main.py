@@ -59,6 +59,7 @@ def create_app():
       # 언어별 정렬 모델을 미리 로드
       get_align_model("en", DEVICE)
       get_align_model("zh", DEVICE)
+      get_align_model("ja", DEVICE)
       logger.info("✅ [Warm-up] 모든 모델 로딩 완료 및 즉시 사용 가능")
     except Exception as e:
       logger.error(f"❌ [Warm-up] 모델 로딩 실패: {e}")

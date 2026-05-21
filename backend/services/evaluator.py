@@ -30,8 +30,7 @@ def evaluate_pronunciation(expected: str, candidates: list, raw_text: str = "", 
   return {
     "score": result.get("score", 0),
     "recognized_text": result.get("recognized_text", expected), # 선택된 최종 단어
-    "word_details": result.get("word_details", []), # 누락된 상세 분석 데이터 추가
-    "aligned_result": result.get("aligned_result"), # 선택된 단어의 정렬 상세 데이터
+    # 각 언어별 evaluator의 analysis_data에 word_details와 aligned_result가 이미 포함되어 있으므로, analysis_data만 그대로 통과시킵니다.
     "analysis_data": result.get("analysis_data", {}), # 분석 데이터 포함
     "error": result.get("error")
   }

@@ -22,16 +22,18 @@ RUN pip install --no-cache-dir \
     websockets==14.1 \
     numpy>=2.1.0 \
     python-multipart==0.0.12 \
-    requests==2.32.5
+    requests==2.32.5 \
+    pykakasi==2.3.0
 
 # 4. 모델 및 데이터 미리 다운로드 (빌드 시점에 캐싱하여 런타임 지연 방지)
 RUN python -c "import nltk; nltk.download('averaged_perceptron_tagger'); nltk.download('averaged_perceptron_tagger_eng'); nltk.download('cmudict'); nltk.download('punkt')" && \
     python -c "from g2p_en import G2p; G2p()" && \
-    python -c "from pypinyin import pinyin; pinyin('你好')"
+    python -c "from pypinyin import pinyin; pinyin('你好')" && \
+    python -c "import pykakasi; pykakasi.kakasi()"
 
-# WhisperX 모델 및 언어별 정렬 모델 (영어, 중국어) 미리 로드
+# WhisperX 모델 및 언어별 정렬 모델 (영어, 중국어, 일본어) 미리 로드
 # 이 과정이 가장 오래 걸리므로 베이스 이미지에 포함시킵니다.
 RUN python -c "import whisperx; whisperx.load_model('base', 'cpu', compute_type='int8')" && \
-    python -c "import whisperx; whisperx.load_align_model('en', 'cpu'); whisperx.load_align_model('zh', 'cpu')"
+    python -c "import whisperx; whisperx.load_align_model('en', 'cpu'); whisperx.load_align_model('zh', 'cpu'); whisperx.load_align_model('ja', 'cpu')"
 
 # 베이스 이미지는 여기까지 실행된 상태로 저장됩니다.
