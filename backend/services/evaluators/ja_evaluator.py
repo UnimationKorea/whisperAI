@@ -33,7 +33,7 @@ class JapaneseEvaluator(BaseEvaluator):
         count += 1
     return count
 
-  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, mode: str = "word", feedback_map: dict = None) -> dict:
+  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, mode: str = "word", audio_np=None, feedback_map: dict = None) -> dict:
     if mode == "sentence":
       return self._evaluate_sentence(expected, raw_text, candidate_results)
     else:

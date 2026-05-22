@@ -254,54 +254,58 @@ function App() {
         logs.push(`• 최종 점수: ${finalScore}점`);
       }
     } else if (lang === "zh" && analysis.word_details) {
-      // 중국어 채점 로직 (백엔드 정렬 데이터 기반)
+      // 중국어 채점 로직 (백엔드 글자 단위 정렬 데이터 기반)
       const details = analysis.word_details;
       const total = details.length;
 
-      let pinyinMatchCount = 0;
-      let toneMatchCount = 0;
-      let charMatchCount = 0;
+      let totalCharScore = 0;
+      let toneWeight = 0;
 
-      details.forEach(d => {
-        // d.is_correct: 병음 + 성조 모두 일치
-        // d.tone_error: 병음은 일치하나 성조가 틀림
-        if (d.is_correct || d.tone_error) {
-          pinyinMatchCount++;
+      if (diff === 3) toneWeight = 0.3;
+      else if (diff === 4) toneWeight = 0.4;
+      else if (diff === 5) toneWeight = 0.5;
+
+      logs.push(`• 난이도 ${diff}단계에 따라 글자 단위 채점을 진행합니다.`);
+
+      details.forEach((d) => {
+        const expected = d.expected;
+        const recognized = d.recognized || "(누락)";
+        const pinyinIsCorrect = !!d.pinyin_is_correct;
+        const toneIsCorrect = !!d.tone_is_correct;
+        const pinyinSim = typeof d.pinyin_similarity === "number" ? d.pinyin_similarity : (pinyinIsCorrect ? 1.0 : 0.0);
+
+        let charScore = 0;
+
+        if (diff === 1) {
+          // 1단계: 병음만으로 채점, pinyin_similarity 기반 부분 점수(가산점) 부여
+          charScore = Math.round(pinyinSim * 100);
+          logs.push(`  - [${expected}] vs [${recognized}]: 병음 유사도 ${Math.round(pinyinSim * 100)}% 가산점 반영 -> ${charScore}점`);
+        } else if (diff === 2) {
+          // 2단계: 병음만으로 채점, 가산점 없음 (완벽 일치 시 100점)
+          charScore = pinyinIsCorrect ? 100 : 0;
+          logs.push(`  - [${expected}] vs [${recognized}]: 병음 일치 여부만 반영 -> ${charScore}점 (${pinyinIsCorrect ? "일치" : "불일치"})`);
+        } else {
+          // 3~5단계: 병음 + 성조로 채점, 가산점 없음, 단계가 높을수록 성조 반영 비율 증가
+          if (!pinyinIsCorrect) {
+            charScore = 0;
+            logs.push(`  - [${expected}] vs [${recognized}]: 병음 불일치 -> 0점`);
+          } else {
+            if (toneIsCorrect) {
+              charScore = 100;
+              logs.push(`  - [${expected}] vs [${recognized}]: 병음 일치 + 성조 일치 -> 100점`);
+            } else {
+              charScore = Math.round(100 * (1 - toneWeight));
+              logs.push(`  - [${expected}] vs [${recognized}]: 병음 일치 + 성조 불일치 (성조 반영 ${Math.round(toneWeight * 100)}% 감점) -> ${charScore}점`);
+            }
+          }
         }
-        if (d.is_correct) {
-          toneMatchCount++;
-        }
-        if (d.expected === d.actual) {
-          charMatchCount++;
-        }
+
+        totalCharScore += charScore;
       });
 
-      const pMatchRatio = pinyinMatchCount / total;
-      const tMatchRatio = toneMatchCount / total;
-      const cMatchRatio = charMatchCount / total;
-
-      if (diff <= 2) {
-        // 1~2단계: 병음만 확인
-        finalScore = Math.round(pMatchRatio * 100);
-        logs.push(`• 난이도 1~2단계: 성조를 무시하고 병음 일치율로만 채점합니다.`);
-        logs.push(`• 병음 일치: ${pinyinMatchCount} / ${total} (${Math.round(pMatchRatio * 100)}%)`);
-      } else if (diff <= 4) {
-        // 3~4단계: 병음 + 성조 확인 (50:50)
-        finalScore = Math.round((pMatchRatio * 50) + (tMatchRatio * 50));
-        logs.push(`• 난이도 3~4단계: 병음과 성조를 함께 확인합니다.`);
-        logs.push(`• 병음 일치: ${pinyinMatchCount} / ${total}`);
-        logs.push(`• 성조 일치: ${toneMatchCount} / ${total}`);
-      } else {
-        // 5단계: 병음 + 성조 + 한자 표기까지 확인 (40:30:30)
-        finalScore = Math.round((pMatchRatio * 40) + (tMatchRatio * 30) + (cMatchRatio * 30));
-        logs.push(`• 난이도 5단계: 병음, 성조, 한자 표기 일치 여부를 모두 확인합니다.`);
-        logs.push(`• 병음 일치: ${pinyinMatchCount} / ${total}`);
-        logs.push(`• 성조 일치: ${toneMatchCount} / ${total}`);
-        logs.push(`• 한자 일치: ${charMatchCount} / ${total}`);
-      }
-
+      finalScore = total > 0 ? Math.round(totalCharScore / total) : 0;
       finalScore = Math.max(0, Math.min(100, finalScore));
-      logs.push(`• 최종 점수: ${finalScore}점`);
+      logs.push(`• 최종 결정 점수: ${finalScore}점 (각 글자 점수 평균)`);
     } else {
       logs.push(`• 기본 분석 점수 적용: ${finalScore}점`);
     }

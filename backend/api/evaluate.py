@@ -136,6 +136,7 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
       language=language,
       mode=mode,
       candidate_results=candidate_results,
+      audio_np=audio_np,
     )
 
     actual_text = evaluation["recognized_text"]

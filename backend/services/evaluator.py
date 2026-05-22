@@ -9,7 +9,7 @@ EVALUATORS = {
   "ja": JapaneseEvaluator(),
 }
 
-def evaluate_pronunciation(expected: str, candidates: list, raw_text: str = "", language: str = "en", mode: str = "word", candidate_results: dict = None):
+def evaluate_pronunciation(expected: str, candidates: list, raw_text: str = "", language: str = "en", mode: str = "word", candidate_results: dict = None, audio_np=None):
   """
   Dispatcher: 언어별 평가 엔진을 호출하여 최종 단어 선택 및 점수를 산출합니다.
   """
@@ -18,12 +18,14 @@ def evaluate_pronunciation(expected: str, candidates: list, raw_text: str = "", 
   
   # 2. 평가 실행
   # 후보군 리스트와 각 정렬 결과, 그리고 Whisper가 직접 들은 raw_text를 모두 넘깁니다.
+  # audio_np는 중국어 pitch contour 분석에만 사용되며, 다른 언어 평가기는 무시합니다.
   result = evaluator.evaluate(
     expected=expected, 
     candidates=candidates, 
     raw_text=raw_text,
     candidate_results=candidate_results, 
-    mode=mode
+    mode=mode,
+    audio_np=audio_np,
   )
   
   # 공통 응답 구조 보장

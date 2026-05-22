@@ -239,7 +239,6 @@ class ChineseEvaluator(BaseEvaluator):
     if not candidates:
       candidates = [expected]
 
-
     print(f"🔍 [Candidate Search & Phonetic Comparison]")
     for cand in candidates:
       res = candidate_results.get(cand, {})
@@ -289,162 +288,94 @@ class ChineseEvaluator(BaseEvaluator):
             {
               "idx": 0,
               "expected": expected,
-              "recognized": raw_text,
-              "pinyin_is_correct": False,
-              "pinyin_similarity": 0,
-              "tone_is_correct": False,
+              "actual": raw_text,
+              "is_correct": False,
               "score": 0,
             }
           ],
         },
       }
 
-    # 2. 글자별 Pitch 분석을 위한 타임스탬프 수집
-    char_timestamps = {}
-    aligned_segments = best_aligned_result.get("segments", []) if best_aligned_result else []
-    if audio_np is not None and best_aligned_result:
-      char_idx = 0
-      for seg in aligned_segments:
-        for char_info in seg.get("chars", []):
-          start = char_info.get("start")
-          end = char_info.get("end")
-          if start is not None and end is not None:
-            char_timestamps[char_idx] = {"start": start, "end": end}
-          char_idx += 1
-
-    # 3. 글자 단위 정렬 분석 및 상세 점수 산정
+    # 2. 최종 점수 및 피드백 산출
     actual = best_candidate
-    expected_clean = re.sub(r"[^\u4e00-\u9fa5a-zA-Z0-9]", "", expected)
-    raw_clean = re.sub(r"[^\u4e00-\u9fa5a-zA-Z0-9]", "", actual)
 
-    matcher = difflib.SequenceMatcher(None, expected_clean, raw_clean)
-    opcodes = matcher.get_opcodes()
-
-    word_details = []
-    total_score = 0
-    char_count = len(expected_clean)
-
-    exp_py = self._get_pinyin_tone(expected_clean)
-    raw_py = self._get_pinyin_tone(raw_clean)
-
-    selected_pinyin_details = self._get_pinyin_details(actual)
-    # selected_pinyin_details의 각 글자 항목에 기본값을 미리 주입합니다.
-    for item in selected_pinyin_details:
-      item["similarity"] = 0.0
-      item["pitch_tone"] = item["tone"]
-      item["pitch_confidence"] = 0.0
-
-    for tag, i1, i2, j1, j2 in opcodes:
-      for k in range(max(i2 - i1, j2 - j1)):
-        exp_idx = i1 + k if (i1 + k) < i2 else None
-        raw_idx = j1 + k if (j1 + k) < j2 else None
-
-        exp_char = expected_clean[exp_idx] if exp_idx is not None else None
-        raw_char = raw_clean[raw_idx] if raw_idx is not None else None
-
-        char_score = 0
-        tone_error = False
-        e_p, e_t = "", 5
-        r_p, r_t = "", 5
-
-        # 글자별 Pitch Contour 분석
-        pitch_result = None
-        detected_tone = None
-        tone_confidence = 0.0
-        if audio_np is not None and exp_idx is not None and exp_idx in char_timestamps:
-          ts = char_timestamps[exp_idx]
-          pitch_result = self._analyze_pitch_segment(audio_np, ts["start"], ts["end"])
-          detected_tone = pitch_result["tone"]
-          tone_confidence = pitch_result["confidence"]
-
-        if exp_char and raw_char:
-          e_p, e_t = exp_py[exp_idx] if exp_idx < len(exp_py) else ("", 5)
-          r_p, r_t = raw_py[raw_idx] if raw_idx < len(raw_py) else ("", 5)
-
-          sim_val = 0.0
-          if e_p == r_p:
-            sim_val = 1.0
-
-            # pitch 신뢰도가 충분하면 실제 감지 성조 적용, 아니면 인식된 성조 적용
-            if tone_confidence >= 0.5:
-              compare_tone = detected_tone
-            else:
-              compare_tone = r_t
-
-            if e_t != 5 and compare_tone != 5 and e_t != compare_tone:
-              char_score = 50
-              tone_error = True
-            else:
-              char_score = 100
-          else:
-            sim_val = difflib.SequenceMatcher(None, e_p, r_p).ratio()
-            char_score = 0
-
-          # selected_pinyin_details 업데이트 (similarity 및 pitch 데이터 반영)
-          if raw_idx is not None and raw_idx < len(selected_pinyin_details):
-            selected_pinyin_details[raw_idx]["similarity"] = round(sim_val, 2)
-            if detected_tone is not None:
-              selected_pinyin_details[raw_idx]["pitch_tone"] = detected_tone
-              selected_pinyin_details[raw_idx]["pitch_confidence"] = tone_confidence
-
-        elif exp_char:
-          char_score = 0
-          sim_val = 0.0
-          tone_error = True
-          e_p, e_t = exp_py[exp_idx] if exp_idx < len(exp_py) else ("", 5)
-
-        elif raw_char:
-          char_score = 0
-          sim_val = 0.0
-          # insertion 발생 시 해당 selected_pinyin_details의 similarity 0.0 반영
-          if raw_idx is not None and raw_idx < len(selected_pinyin_details):
-            selected_pinyin_details[raw_idx]["similarity"] = 0.0
-            if detected_tone is not None:
-              selected_pinyin_details[raw_idx]["pitch_tone"] = detected_tone
-              selected_pinyin_details[raw_idx]["pitch_confidence"] = tone_confidence
-
-        if exp_idx is not None:
-          total_score += char_score
-
-          # 모든 index에 pitch 정보가 항상 추가되도록 pitch_info를 구성합니다.
-          pitch_tone_match = False
-          if detected_tone is not None:
-            pitch_tone_match = (
-              detected_tone == e_t
-              or tone_confidence < 0.5
-              or e_t == 5
-              or detected_tone == 5
-            )
-          
-          pitch_info = {
-            "expected_tone": e_t,
-            "detected_tone": detected_tone if detected_tone is not None else 5,
-            "confidence": tone_confidence,
-            "match": pitch_tone_match,
-          }
-
-          word_details.append({
-            "idx": exp_idx,
-            "expected": exp_char,
-            "recognized": raw_char,
-            "pinyin_is_correct": (e_p == r_p) if (exp_char and raw_char) else False,
-            "pinyin_similarity": round(sim_val, 2),
-            "tone_is_correct": not tone_error,
-            "score": char_score,
-            "pitch": pitch_info,
-          })
-
-    # 최종 점수 산정
-    avg_score = int(total_score / char_count) if char_count > 0 else 0
+    # 발음 명확도(Clarity) 계산: WhisperX 정렬 시의 confidence score 평균
     aligned_segments = best_aligned_result.get("segments", []) if best_aligned_result else []
     clarity_score = self._calculate_clarity_score(expected, aligned_segments)
-    final_score = int((avg_score * 0.7) + (clarity_score * 0.3))
 
-    tone_errors = sum(1 for d in word_details if not d.get("tone_is_correct"))
-    if tone_errors > 0:
-      final_score = min(final_score, 85 - (tone_errors * 5))
+    # 기본 점수 산출
+    base_score = 100 if actual in candidates else 0
 
-    final_score = max(0, min(100, final_score))
+    # 명확도 기반 최종 점수 보정 (발음이 흐릿하면 추가 감점)
+    clarity_threshold = 60 # 명확도 커트라인 고정
+    if actual == expected:
+      if clarity_score < clarity_threshold:
+        final_score = int(base_score * (clarity_score / clarity_threshold))
+      else:
+        final_score = base_score
+        # 고득점 보정 (명확도 92점 이상이면 100점 처리)
+        if clarity_score >= 92:
+          final_score = 100
+    else:
+      # 오답 후보 선택 시 명확도 비율대로 점수 적용
+      final_score = int(base_score * (clarity_score / 100))
+
+    # ── Pitch Contour 분석 (pyworld) ─────────────────────────────
+    pitch_analysis = {
+      "detected_tone": 5,
+      "expected_tone": 5,
+      "confidence": 0.0,
+      "f0_curve": [],
+      "penalty": 0,
+      "available": False,  # 분석 수행 여부
+    }
+
+    if audio_np is not None:
+      # 정답 단어의 기대 성조 목록 (첫 번째 글자 기준)
+      expected_tones = [t for _, t in expected_py_data]
+      expected_tone = expected_tones[0] if expected_tones else 5
+
+      pitch_result = self._analyze_pitch_segment(audio_np)
+      detected_tone = pitch_result["tone"]
+      tone_confidence = pitch_result["confidence"]
+
+      print(f"🎵 [Pitch Contour] 기대 성조: {expected_tone}성 / 감지 성조: {detected_tone}성 (신뢰도: {tone_confidence:.2f})")
+
+      # 신뢰도가 충분할 때만 성조 페널티 적용
+      # 경성(5)은 기대 성조로도, 감지 성조로도 페널티 면제
+      pitch_penalty = 0
+      if (
+        tone_confidence >= 0.5
+        and expected_tone != 5
+        and detected_tone != 5
+        and detected_tone != expected_tone
+      ):
+        pitch_penalty = 15  # 성조 불일치 시 최대 15점 감점
+        print(f"  → 성조 불일치 페널티 적용: -{pitch_penalty}점")
+      else:
+        print(f"  → 성조 일치 또는 판정 보류 ✅")
+
+      pitch_analysis = {
+        "detected_tone": detected_tone,
+        "expected_tone": expected_tone,
+        "confidence": tone_confidence,
+        "f0_curve": pitch_result["f0_curve"],
+        "penalty": pitch_penalty,
+        "available": True,
+      }
+      final_score = max(0, final_score - pitch_penalty)
+    # ─────────────────────────────────────────────────────────────
+
+    # 상세 정보 구성
+    word_details = [
+      {
+        "idx": 0,
+        "expected": expected,
+        "actual": actual,
+        "is_correct": (actual == expected),
+        "score": final_score,
+      }
+    ]
 
     return {
       "score": max(0, min(100, final_score)),
@@ -452,9 +383,10 @@ class ChineseEvaluator(BaseEvaluator):
       "analysis_data": {
         "expected": self._get_pinyin_details(expected),
         "recognized": self._get_pinyin_details(raw_text), # raw_text(refined) 기반
-        "selected": selected_pinyin_details,
+        "selected": self._get_pinyin_details(actual),
         "word_details": word_details,
         "aligned_result": best_aligned_result,
+        "pitch_analysis": pitch_analysis,
       },
     }
 
@@ -540,67 +472,39 @@ class ChineseEvaluator(BaseEvaluator):
 
         char_score = 0
         tone_error = False
-        e_p, e_t = "", 5
-        r_p, r_t = "", 5
-
-        # ── 글자별 Pitch Contour 분석 (성조 채점보다 먼저 실행) ──────
-        # 성조 비교 기준으로 사용하므로, 병음 채점 블록보다 먼저 실행합니다.
-        pitch_result = None
-        detected_tone = None
-        tone_confidence = 0.0
-        if audio_np is not None and exp_idx is not None and exp_idx in char_timestamps:
-          ts = char_timestamps[exp_idx]
-          pitch_result = self._analyze_pitch_segment(audio_np, ts["start"], ts["end"])
-          detected_tone = pitch_result["tone"]
-          tone_confidence = pitch_result["confidence"]
-        # ─────────────────────────────────────────────────────────────
 
         if exp_char and raw_char:
-          # 병음/성조 추출 (정답 + 인식 결과)
-          e_p, e_t = exp_py[exp_idx] if exp_idx < len(exp_py) else ("", 5)
-          r_p, r_t = raw_py[raw_idx] if raw_idx < len(raw_py) else ("", 5)
-
           print(f"  - [{exp_char}] vs [{raw_char}]", end=" ")
           sim_val = 0.0
-
-          if e_p == r_p:
-            # 병음(음소) 일치 → 성조 비교
+          if exp_char == raw_char:
+            # 완벽 일치
+            char_score = 100
             sim_val = 1.0
-
-            # 성조 비교 기준 결정:
-            # pitch confidence >= 0.5이면 detected_tone(실제 발화 성조) 우선 사용
-            # 신뢰도 부족 시 r_t(Whisper 인식 기반 성조)로 폴백
-            if tone_confidence >= 0.5:
-              compare_tone = detected_tone
-              tone_src = f"pitch({detected_tone}성, conf={tone_confidence:.2f})"
-            else:
-              compare_tone = r_t
-              tone_src = f"pinyin({r_t}성, conf={tone_confidence:.2f})"
-
-            # 경성(5)이 기대/비교 성조인 경우 오류 판정 면제
-            if e_t != 5 and compare_tone != 5 and e_t != compare_tone:
-              char_score = 50
-              tone_error = True
-              print(
-                f"    -> Pinyin Match, Tone Error "
-                f"(expected {e_t}성, {tone_src}). Score: {char_score}"
-              )
-            else:
-              char_score = 100
-              print(f"    -> Pinyin Match + Tone OK [{tone_src}]. Score: {char_score}")
-
+            print(f"    -> Exact Match! Score: {char_score}")
           else:
-            # 병음(음소) 불일치
-            sim_val = difflib.SequenceMatcher(None, e_p, r_p).ratio()
-            char_score = 0
-            print(f"    -> Pinyin Mismatch! {e_p} vs {r_p} (sim: {sim_val:.2f}). Score: {char_score}")
+            # 글자는 다르지만 발음/성조 체크
+            e_p, e_t = exp_py[exp_idx] if exp_idx < len(exp_py) else ("", 5)
+            r_p, r_t = raw_py[raw_idx] if raw_idx < len(raw_py) else ("", 5)
+
+            if e_p == r_p:
+              sim_val = 1.0
+              if e_t == r_t:
+                # 이체자 등: 표기만 다르고 발음/성조 동일
+                char_score = 90
+                print(f"    -> Pinyin & Tone Match (variant?)! Score: {char_score}")
+              else:
+                # 발음은 같은데 성조만 틀림
+                char_score = 60
+                tone_error = True
+                print(f"    -> Pinyin Match, Tone Error ({e_t} vs {r_t}). Score: {char_score}")
+            else:
+              # 발음 자체가 다름 (점수는 최하점 처리, 유사도 정보만 클라이언트에 전달)
+              sim_val = difflib.SequenceMatcher(None, e_p, r_p).ratio()
+              char_score = 20
+              print(f"    -> Pinyin Mismatch! {e_p} vs {r_p} (sim: {sim_val:.2f}). Score: {char_score}")
 
           if raw_idx is not None and raw_idx < len(recognized_pinyin_details):
             recognized_pinyin_details[raw_idx]["similarity"] = round(sim_val, 2)
-            # pitch로 감지된 실제 발화 성조도 클라이언트에 함께 전달
-            if detected_tone is not None:
-              recognized_pinyin_details[raw_idx]["pitch_tone"] = detected_tone
-              recognized_pinyin_details[raw_idx]["pitch_confidence"] = tone_confidence
 
         elif exp_char:
           # 글자가 누락됨
@@ -610,38 +514,46 @@ class ChineseEvaluator(BaseEvaluator):
         if exp_idx is not None:
           total_score += char_score
 
-          # pitch_info 구성 (클라이언트 전달용)
-          # 채점 로직과 독립적으로 pitch 분석 결과 자체를 그대로 보고합니다.
+          # ── 글자별 Pitch Contour 분석 ────────────────────────────
+          # WhisperX 정렬 타임스탬프가 있는 글자에 대해서만 수행합니다.
           pitch_info = None
-          if pitch_result is not None:
-            pitch_tone_match = (
-              detected_tone == e_t
-              or tone_confidence < 0.5
-              or e_t == 5
-              or detected_tone == 5
+          if audio_np is not None and exp_idx in char_timestamps:
+            ts = char_timestamps[exp_idx]
+            pitch_result = self._analyze_pitch_segment(audio_np, ts["start"], ts["end"])
+            expected_tone = exp_py[exp_idx][1] if exp_idx < len(exp_py) else 5
+
+            # 성조 일치 여부 판정
+            # (신뢰도 < 0.5이거나 경성인 경우 판정 보류)
+            tone_match = (
+              pitch_result["tone"] == expected_tone
+              or pitch_result["confidence"] < 0.5
+              or expected_tone == 5
+              or pitch_result["tone"] == 5
             )
             pitch_info = {
-              "expected_tone": e_t,
-              "detected_tone": detected_tone,
-              "confidence": tone_confidence,
-              "match": pitch_tone_match,
+              "expected_tone": expected_tone,
+              "detected_tone": pitch_result["tone"],
+              "confidence": pitch_result["confidence"],
+              "match": tone_match,
             }
 
-            if not pitch_tone_match:
+            if not tone_match:
               print(
-                f"    🎵 Pitch: {e_t}성 기대, "
-                f"{detected_tone}성 감지 "
-                f"(conf={tone_confidence:.2f}) → 성조 불일치"
+                f"    🎵 Pitch: {expected_tone}성 기대, "
+                f"{pitch_result['tone']}성 감지 "
+                f"(conf={pitch_result['confidence']:.2f}) → 성조 불일치"
               )
+              # pitch 기반 성조 오류도 tone_error에 반영
+              tone_error = True
+          # ─────────────────────────────────────────────────────────
 
           word_details.append(
             {
               "idx": exp_idx,
               "expected": exp_char,
-              "recognized": raw_char,
-              "pinyin_is_correct": (e_p == r_p),
-              "pinyin_similarity": round(sim_val, 2),
-              "tone_is_correct": not tone_error,
+              "actual": raw_char,
+              "is_correct": (char_score >= 90),
+              "tone_error": tone_error,
               "score": char_score,
               **({"pitch": pitch_info} if pitch_info is not None else {}),
             }
@@ -661,7 +573,7 @@ class ChineseEvaluator(BaseEvaluator):
 
     # 성조 보정 (텍스트 기반 + pitch 기반 통합)
     # 성조 오류가 있는 글자마다 감점하여 최대 점수를 제한합니다.
-    tone_errors = sum(1 for d in word_details if not d.get("tone_is_correct"))
+    tone_errors = sum(1 for d in word_details if d.get("tone_error"))
     if tone_errors > 0:
       final_score = min(final_score, 85 - (tone_errors * 5))
 

@@ -10,7 +10,7 @@ class EnglishEvaluator(BaseEvaluator):
   def __init__(self):
     self.g2p = G2p()
 
-  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, mode: str = "word") -> dict:
+  def evaluate(self, expected: str, candidates: list, raw_text: str = "", candidate_results: dict = None, mode: str = "word", audio_np=None) -> dict:
     """
     영어 평가 메인 진입점: 모드(단어/문장)에 따라 채점 로직을 분기합니다.
     """
