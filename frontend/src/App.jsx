@@ -15,6 +15,30 @@ import { LANG_DATA, VARIANTS_FEEDBACK } from "./constants";
 const SILENCE_THRESHOLD = 0.015;
 const SILENCE_DURATION = 2000;
 
+/**
+ * 두 일본어 가나(Hiragana) 문자열 간의 Sequence Matcher 유사도를 구합니다.
+ * Python의 difflib.SequenceMatcher(None, s1, s2).ratio() 와 유사하게 LCS 길이를 기반으로 산출합니다.
+ */
+const getSequenceSimilarity = (s1, s2) => {
+  if (!s1 || !s2) return 0;
+  const m = s1.length;
+  const n = s2.length;
+  const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (s1[i - 1] === s2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  const lcs = dp[m][n];
+  return (2 * lcs) / (m + n);
+};
+
 function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -219,7 +243,7 @@ function App() {
       } else {
         // 영어 단어 모드 채점
         const expectedPhonemes = analysis.expected || [];
-        const recognizedPhonemes = analysis.recognized || [];
+        const recognizedPhonemes = analysis.selected || [];
         const charAnalysis = analysis.char_analysis || [];
 
         // 1. 음소 일치도 계산
@@ -306,6 +330,79 @@ function App() {
       finalScore = total > 0 ? Math.round(totalCharScore / total) : 0;
       finalScore = Math.max(0, Math.min(100, finalScore));
       logs.push(`• 최종 결정 점수: ${finalScore}점 (각 글자 점수 평균)`);
+    } else if (lang === "ja") {
+      if (mode === "word") {
+        // 일본어 단어 모드 채점
+        const expected = analysis.expected || {};
+        const selected = analysis.selected || {};
+
+        const expectedKana = expected.kana || "";
+        const selectedKana = selected.kana || "";
+        const expectedMora = expected.mora || 0;
+        const selectedMora = selected.mora || 0;
+
+        // 1. Kana 문자 일치율 계산 (LCS 기반)
+        const kanaSim = getSequenceSimilarity(expectedKana, selectedKana) * 100;
+
+        // 2. Mora(박자) 차이에 따른 감점 계산
+        const moraDiff = Math.abs(expectedMora - selectedMora);
+        const moraPenalty = moraDiff * 15;
+
+        // 3. 최종 점수 산정
+        let baseWordScore;
+        if (diff <= 2) {
+          // 난이도 1~2단계: 발음 명확도 무시하고 Kana 일치도 및 Mora 감점만으로 평가
+          baseWordScore = Math.max(0, kanaSim - moraPenalty);
+          logs.push(`• 난이도 1~2단계: 발음 명확도를 무시하고 Kana 일치율 및 Mora 차이만으로 채점합니다.`);
+        } else {
+          // 난이도 3~5단계: aligned_result.word_segments의 각 히라가나 별 명확도를 반영
+          const alignedResult = analysis.aligned_result || {};
+          const wordSegments = alignedResult.word_segments || [];
+
+          // 각 히라가나 별 score(명확도) 평균 계산
+          const validScores = wordSegments
+            .filter(s => typeof s.score === "number")
+            .map(s => s.score * 100);
+
+          const avgCharScore = validScores.length > 0
+            ? validScores.reduce((acc, val) => acc + val, 0) / validScores.length
+            : 0;
+
+          // 단계별로 명확도 반영에 차등 가중치 부여
+          let kanaWeight, clarityWeight;
+          if (diff === 3) {
+            kanaWeight = 0.60;
+            clarityWeight = 0.40;
+            logs.push(`• 난이도 3단계: 가나 일치도(60%)와 히라가나별 명확도(40%)를 종합합니다.`);
+          } else if (diff === 4) {
+            kanaWeight = 0.45;
+            clarityWeight = 0.55;
+            logs.push(`• 난이도 4단계: 가나 일치도(45%)와 히라가나별 명확도(55%)를 종합합니다.`);
+          } else {
+            // diff === 5
+            kanaWeight = 0.30;
+            clarityWeight = 0.70;
+            logs.push(`• 난이도 5단계: 가나 일치도(30%)와 히라가나별 명확도(70%)를 종합합니다.`);
+          }
+
+          const matchScore = Math.max(0, kanaSim - moraPenalty);
+          baseWordScore = (matchScore * kanaWeight) + (avgCharScore * clarityWeight);
+
+          logs.push(`• 발음 명확도(히라가나 평균): ${Math.round(avgCharScore)}점`);
+          logs.push(`• 적용 가중치: 가나 일치 ${Math.round(kanaWeight * 100)}% / 명확도 ${Math.round(clarityWeight * 100)}%`);
+        }
+
+        // 4. 난이도 단계별 보정 감점 적용 (영어 단어 모드와 동일)
+        const difficultyPenalty = (diff - 1) * 2;
+        finalScore = Math.round(Math.max(0, Math.min(100, baseWordScore - difficultyPenalty)));
+
+        logs.push(`• 가나(Kana) 일치율: ${Math.round(kanaSim)}% (Target: ${expectedKana} / Recognized: ${selectedKana})`);
+        logs.push(`• Mora(박자) 차이 감점: -${moraPenalty}점 (차이: ${moraDiff} Mora)`);
+        logs.push(`• 난이도 보정: -${difficultyPenalty}점`);
+        logs.push(`• 최종 점수: ${finalScore}점`);
+      } else {
+        logs.push(`• 일본어 문장 채점은 기본 분석 점수를 적용합니다: ${finalScore}점`);
+      }
     } else {
       logs.push(`• 기본 분석 점수 적용: ${finalScore}점`);
     }

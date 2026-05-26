@@ -212,18 +212,21 @@ class JapaneseEvaluator(BaseEvaluator):
         raw_char = raw_kana[raw_idx] if raw_idx is not None else None
         
         char_score = 0
+        similarity = 0
         if exp_char and raw_char:
           print(f"  - [{exp_char}] vs [{raw_char}]", end=" ")
           if exp_char == raw_char:
             char_score = 100
+            similarity = 1
             print(f"    -> Exact Match! Score: {char_score}")
           else:
             similarity = difflib.SequenceMatcher(None, exp_char, raw_char).ratio()
-            if similarity >= 0.5:
-              char_score = int(20 + (similarity * 40))
+            if similarity >= 0.1:
+              # char_score = int(20 + (similarity * 40))
+              char_score = similarity * 100
               print(f"    -> Kana Similar ({similarity:.2f}). Score: {char_score}")
             else:
-              char_score = 20
+              char_score = 0
               print(f"    -> Kana Mismatch. Score: {char_score}")
         elif exp_char:
           char_score = 0
@@ -236,7 +239,8 @@ class JapaneseEvaluator(BaseEvaluator):
             "expected": exp_char,
             "actual": raw_char,
             "is_correct": (char_score >= 90),
-            "score": char_score
+            "score": char_score,
+            "similarity": similarity
           })
 
     avg_score = int(total_score / char_count) if char_count > 0 else 0

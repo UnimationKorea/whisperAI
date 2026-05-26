@@ -75,17 +75,22 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
       }
     }
   else:
-    # 언어가 일치하거나 확신도가 낮을 경우, 목표 언어로 고정하여 정밀 전사 재실행
-    # 이를 통해 발음이 다소 부정확하더라도 목표 언어 내에서 가장 유사한 텍스트를 얻을 수 있습니다.
-    print(f"✨ Refining transcription with fixed language: {language}")
-    raw_segments_gen, _ = model.model.transcribe(
-      audio_np, 
-      language=language,
-      temperature=0,
-      vad_filter=True
-    )
-    refined_raw_text = "".join([s.text for s in raw_segments_gen]).strip().lower()
-    print(f"📢 [Refined Whisper Transcription: '{refined_raw_text}']")
+    # 💡 [성능 최적화]: 이미 감지된 언어가 목표 언어와 일치한다면
+    # 중복 Faster-Whisper Transcribe 연산을 방지하기 위해 1차 전사 텍스트를 그대로 재활용합니다.
+    if detected_lang == language and initial_raw_text:
+      print(f"✨ [Speedup] 언어 일치로 2차 전사를 생략하고 1차 텍스트를 재활용합니다: '{initial_raw_text}'")
+      refined_raw_text = initial_raw_text
+    else:
+      # 언어가 일치하지 않거나 확신도가 낮은 등의 경우에는 목표 언어로 고정하여 정밀 전사를 1회 수행합니다.
+      print(f"✨ Refining transcription with fixed language: {language}")
+      raw_segments_gen, _ = model.model.transcribe(
+        audio_np, 
+        language=language,
+        temperature=0,
+        vad_filter=True
+      )
+      refined_raw_text = "".join([s.text for s in raw_segments_gen]).strip().lower()
+      print(f"📢 [Refined Whisper Transcription: '{refined_raw_text}']")
 
   # 1. 모든 후보군에 대해 정렬 실행 및 결과 수집
   candidate_results = {}
@@ -95,7 +100,11 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
     model_a, metadata = get_align_model(language, device)
     
     print(f"🔍 [Multi-Alignment Search: {expected_word}]")
-    for cand in candidates:
+    
+    # 💡 [성능 최적화]: 멀티스레드 스레드풀을 활용하여 candidates 마다 동기적으로 실행되던 Aligner 연산을 병렬 처리합니다.
+    from concurrent.futures import ThreadPoolExecutor
+    
+    def run_single_align(cand):
       # Japanese(ja)의 경우, Wav2Vec2 정렬 모델이 한자(Kanji)를 인식하지 못하므로 히라가나로 변환하여 정렬을 수행합니다.
       align_text = cand
       if language == "ja":
@@ -129,11 +138,20 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
               count += 1
       
       avg_score = (total_score / count) if count > 0 else 0
+      return cand, avg_score, result_aligned
+
+    # 스레드 개수는 후보 단어 수만큼(최대 5~8개 스레드) 동적으로 설정하여 대기 시간을 극한으로 줄집니다.
+    max_workers = min(len(candidates), 8)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+      # 모든 후보의 정렬을 병렬로 발사하고 대기합니다.
+      results = list(executor.map(run_single_align, candidates))
+      
+    for cand, avg_score, result_aligned in results:
       candidate_results[cand] = {
         "avg_score": avg_score,
         "result": result_aligned
       }
-      print(f"  - Candidate '{cand}': {avg_score:.4f}")
+      print(f"  - Candidate '{cand}': {avg_score:.4f} [Parallel Aligned]")
 
     # 2. 발음 평가 서비스 호출 (최종 단어 선택 권한을 평가기에게 위임)
     evaluation = evaluate_pronunciation(
