@@ -6,6 +6,7 @@ import json
 import logging
 import numpy as np
 from fastapi import APIRouter, UploadFile, File, Form, Request
+from fastapi.responses import JSONResponse
 from services.evaluator import evaluate_pronunciation
 import whisperx
 
@@ -189,6 +190,13 @@ async def evaluate(
 ):
   model = request.app.state.model
   device = getattr(request.app.state, "device", "cpu")
+
+  # 모델이 아직 로딩 중인 경우 503 반환 (Cloud Run 백그라운드 Warm-up 중)
+  if model is None:
+    return JSONResponse(
+      status_code=503,
+      content={"error": {"code": "503", "msg": "모델 로딩 중입니다. 잠시 후 다시 시도해주세요."}}
+    )
   
   # JSON 문자열 파싱
   parsed_candidates = None

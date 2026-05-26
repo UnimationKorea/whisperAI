@@ -35,16 +35,13 @@ def create_app():
     allow_headers=["*"],
   )
 
-  # Whisper 모델 로드 및 공유 설정 (app.state)
-  # logger.info(f"⏳ Whisper 모델 로딩 중... (Size: {MODEL_SIZE}, Device: {DEVICE})")
-  # app.state.model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-  # logger.info("✅ Whisper 모델 로딩 완료")
-  # WhisperX 모델 로드
-  logger.info(f"⏳ WhisperX 모델 로딩 중... (Size: {MODEL_SIZE}, Device: {DEVICE})")
-  # whisperx.load_model은 내부적으로 faster-whisper를 사용합니다.
-  app.state.model = whisperx.load_model(MODEL_SIZE, DEVICE, compute_type=COMPUTE_TYPE)
+  # ── 모델 상태 초기화 (로딩은 startup_event에서 백그라운드로 수행) ──
+  # Cloud Run은 컨테이너가 PORT에 리스닝해야 startup probe를 통과합니다.
+  # 모듈 레벨에서 동기적으로 모델을 로드하면 uvicorn이 포트에 바인딩하기 전에
+  # 타임아웃이 발생하므로, 모델 로딩을 startup_event 백그라운드 스레드로 이동합니다.
+  app.state.model = None
   app.state.device = DEVICE
-  logger.info("✅ WhisperX 모델 로딩 완료")
+  app.state.model_ready = False
 
   # 라우터 등록
   app.include_router(evaluate_router)
@@ -52,22 +49,30 @@ def create_app():
   @app.on_event("startup")
   async def startup_event():
     """
-    서버 시작 시 모델들을 메모리에 미리 로드하여 첫 요청 지연을 방지합니다.
-    (Cloud Run 배포 시 타임아웃 방지를 위해 백그라운드 스레드에서 비동기로 Warm-up을 수행합니다.)
+    서버 시작 시 모델들을 백그라운드 스레드에서 비동기로 로드합니다.
+    uvicorn이 즉시 포트에 바인딩하여 Cloud Run 헬스체크를 통과할 수 있도록 합니다.
     """
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
 
     def load_all_models():
-      logger.info("🔥 [Warm-up] 백그라운드 정렬 모델 메모리 로딩 시작...")
+      logger.info("🔥 [Warm-up] 백그라운드 모델 메모리 로딩 시작...")
       try:
-        # 언어별 정렬 모델을 미리 로드
+        # 1) WhisperX 메인 모델 로드
+        logger.info(f"⏳ WhisperX 모델 로딩 중... (Size: {MODEL_SIZE}, Device: {DEVICE})")
+        app.state.model = whisperx.load_model(MODEL_SIZE, DEVICE, compute_type=COMPUTE_TYPE)
+        logger.info("✅ WhisperX 모델 로딩 완료")
+
+        # 2) 언어별 정렬 모델을 미리 로드 (첫 요청 지연 방지)
         get_align_model("en", DEVICE)
         get_align_model("zh", DEVICE)
         get_align_model("ja", DEVICE)
-        logger.info("✅ [Warm-up] 백그라운드 모든 모델 로딩 완료 및 즉시 사용 가능")
+
+        # 3) 모든 모델 로딩 완료 → 준비 상태로 전환
+        app.state.model_ready = True
+        logger.info("✅ [Warm-up] 모든 모델 로딩 완료 및 즉시 사용 가능")
       except Exception as e:
-        logger.error(f"❌ [Warm-up] 백그라운드 모델 로딩 실패: {e}")
+        logger.error(f"❌ [Warm-up] 모델 로딩 실패: {e}")
 
     # 백그라운드 스레드풀에서 모델 로딩을 실행하여 메인 스레드(FastAPI 기동 및 포트 리스닝)의 블로킹을 막습니다.
     loop = asyncio.get_running_loop()
@@ -77,12 +82,14 @@ def create_app():
 
   @app.get("/health")
   async def health_check():
+    """모델 로딩 상태를 포함한 헬스체크 엔드포인트"""
     return {
-      "status": "healthy",
+      "status": "healthy" if app.state.model_ready else "warming_up",
       "model": MODEL_SIZE,
       "device": DEVICE,
       "compute_type": COMPUTE_TYPE,
-      "engine": "whisperx"
+      "engine": "whisperx",
+      "model_ready": app.state.model_ready
     }
 
   return app
