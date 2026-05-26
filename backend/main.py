@@ -74,9 +74,17 @@ def create_app():
         get_align_model("zh", DEVICE)
         get_align_model("ja", DEVICE)
 
-        # 3) 모든 모델 로딩 완료 → 준비 상태로 전환
+        # 3) 언어별 평가기(G2p, pykakasi 등) 백그라운드 사전 로드
+        logger.info("⏳ 언어별 평가기(G2p, pykakasi 등) 백그라운드 로드 중...")
+        from services.evaluator import get_evaluator
+        get_evaluator("en")
+        get_evaluator("zh")
+        get_evaluator("ja")
+        logger.info("✅ 언어별 평가기 백그라운드 로드 완료")
+
+        # 4) 모든 모델 로딩 완료 → 준비 상태로 전환
         app.state.model_ready = True
-        logger.info("✅ [Warm-up] 모든 모델 로딩 완료 및 즉시 사용 가능")
+        logger.info("✅ [Warm-up] 모든 모델 및 평가기 로딩 완료 및 즉시 사용 가능")
       except Exception as e:
         logger.error(f"❌ [Warm-up] 모델 로딩 실패: {e}", exc_info=True)
 
