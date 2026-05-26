@@ -3,11 +3,14 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-# from faster_whisper import WhisperModel
-import whisperx
-import torch
+
+# ⚠️ whisperx, torch는 여기서 import하지 않습니다.
+# Cloud Run에서 이 모듈들의 import만으로 30~60초가 소요되어
+# uvicorn 포트 바인딩 전에 startup probe 타임아웃이 발생합니다.
+# → startup_event 백그라운드 스레드에서 lazy import합니다.
 
 # 라우터 및 모델 관리 함수 가져오기
+# (evaluate.py도 whisperx를 lazy import하도록 수정됨)
 from api.evaluate import router as evaluate_router, get_align_model
 
 # .env 로드
@@ -58,6 +61,9 @@ def create_app():
     def load_all_models():
       logger.info("🔥 [Warm-up] 백그라운드 모델 메모리 로딩 시작...")
       try:
+        # ★ 여기서 whisperx를 최초 import합니다 (torch도 함께 로딩됨)
+        import whisperx
+
         # 1) WhisperX 메인 모델 로드
         logger.info(f"⏳ WhisperX 모델 로딩 중... (Size: {MODEL_SIZE}, Device: {DEVICE})")
         app.state.model = whisperx.load_model(MODEL_SIZE, DEVICE, compute_type=COMPUTE_TYPE)
@@ -72,7 +78,7 @@ def create_app():
         app.state.model_ready = True
         logger.info("✅ [Warm-up] 모든 모델 로딩 완료 및 즉시 사용 가능")
       except Exception as e:
-        logger.error(f"❌ [Warm-up] 모델 로딩 실패: {e}")
+        logger.error(f"❌ [Warm-up] 모델 로딩 실패: {e}", exc_info=True)
 
     # 백그라운드 스레드풀에서 모델 로딩을 실행하여 메인 스레드(FastAPI 기동 및 포트 리스닝)의 블로킹을 막습니다.
     loop = asyncio.get_running_loop()

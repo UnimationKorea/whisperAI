@@ -8,7 +8,11 @@ import numpy as np
 from fastapi import APIRouter, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse
 from services.evaluator import evaluate_pronunciation
-import whisperx
+
+# ⚠️ whisperx는 모듈 레벨에서 import하지 않습니다.
+# torch를 포함한 무거운 의존성이 서버 시작을 30~60초 지연시켜
+# Cloud Run startup probe 타임아웃을 유발합니다.
+# → 각 함수 내부에서 lazy import합니다.
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -18,6 +22,7 @@ align_models = {}
 
 def get_align_model(language_code, device):
   if language_code not in align_models:
+    import whisperx
     logger.info(f"🚀 Loading alignment model for {language_code}...")
     align_models[language_code] = whisperx.load_align_model(language_code=language_code, device=device)
   return align_models[language_code]
@@ -103,6 +108,7 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
       temp_segments = [{"start": 0, "end": duration, "text": align_text}]
       
       # 정렬 실행
+      import whisperx
       result_aligned = whisperx.align(
         temp_segments, 
         model_a, 
@@ -226,6 +232,7 @@ async def evaluate(
         tmp_path = tmp_file.name
 
       try:
+        import whisperx
         audio_np = whisperx.load_audio(tmp_path)
         result = await run_evaluation_process(
           model, device, audio_np, expected, language, mode, 
