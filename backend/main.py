@@ -1,5 +1,33 @@
 import os
+import sys
 import logging
+
+# ⚠️ Python 3.12+ 대응: 일부 라이브러리(transformers, whisperx 등)가 내부적으로 의존하는 pkg_resources 모듈 결손 우회
+try:
+  import pkg_resources
+except ImportError:
+  class DummyDistribution:
+    version = "99.9.9"
+    location = ""
+
+  class DummyVersion:
+    def __init__(self, v):
+      self.v = v
+    def __ge__(self, other): return True
+    def __gt__(self, other): return True
+    def __le__(self, other): return True
+    def __lt__(self, other): return True
+    def __eq__(self, other): return True
+
+  class DummyPkgResources:
+    def get_distribution(self, name):
+      return DummyDistribution()
+    def parse_version(self, version):
+      return DummyVersion(version)
+
+  sys.modules["pkg_resources"] = DummyPkgResources()
+# ==========================================pkg_resources 모듈 결손 우회
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -63,8 +91,18 @@ def create_app():
     def load_all_models():
       logger.info("🔥 [Warm-up] 백그라운드 모델 메모리 로딩 시작...")
       try:
-        from api.evaluate import get_whisper_model
-        get_whisper_model(app)
+        # ★ 여기서 whisperx를 최초 import합니다 (torch도 함께 로딩됨)
+        import whisperx
+
+        # 1) WhisperX 메인 모델 로드
+        logger.info(f"⏳ WhisperX 모델 로딩 중... (Size: {MODEL_SIZE}, Device: {DEVICE})")
+        app.state.model = whisperx.load_model(MODEL_SIZE, DEVICE, compute_type=COMPUTE_TYPE)
+        logger.info("✅ WhisperX 모델 로딩 완료")
+
+        # 2) 모든 모델 로딩 완료 → 준비 상태로 전환
+        # (언어별 정렬 모델 및 평가기는 첫 요청 시 지연 로딩됩니다.)
+        app.state.model_ready = True
+        logger.info("✅ [Warm-up] 메인 WhisperX 모델 로딩 완료 및 즉시 사용 가능")
       except Exception as e:
         import traceback
         error_msg = f"{e}\n{traceback.format_exc()}"
