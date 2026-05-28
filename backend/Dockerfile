@@ -10,6 +10,9 @@ WORKDIR /app
 # 베이스 이미지에 이미 모든 라이브러리가 설치되어 있으므로 코드만 복사하면 됩니다.
 COPY . .
 
+# setuptools 추가 설치 (Python 3.12 대응 및 pkg_resources 오류 해결)
+RUN pip install --no-cache-dir setuptools
+
 # 4. 환경 변수 설정
 ENV PORT=8080 \
     WHISPER_MODEL=base \
