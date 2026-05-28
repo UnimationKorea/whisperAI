@@ -4,6 +4,7 @@ import tempfile
 import time
 import json
 import logging
+import threading
 import numpy as np
 from fastapi import APIRouter, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse
@@ -19,6 +20,21 @@ logger = logging.getLogger(__name__)
 
 # 전역 변수로 모델 관리 (메모리 절약 및 재사용)
 align_models = {}
+model_lock = threading.Lock()
+
+def get_whisper_model(app):
+  if app.state.model is None:
+    with model_lock:
+      if app.state.model is None:
+        import whisperx
+        model_size = os.getenv("WHISPER_MODEL", "base")
+        device = getattr(app.state, "device", "cpu")
+        compute_type = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+        logger.info(f"⏳ [Lazy Load] WhisperX 모델 로딩 시작... (Size: {model_size}, Device: {device})")
+        app.state.model = whisperx.load_model(model_size, device, compute_type=compute_type)
+        app.state.model_ready = True
+        logger.info("✅ [Lazy Load] WhisperX 모델 로딩 완료")
+  return app.state.model
 
 def get_align_model(language_code, device):
   if language_code not in align_models:
@@ -212,15 +228,16 @@ async def evaluate(
   mode: str = Form("word"),
   candidates: str = Form(None)   # JSON string
 ):
-  model = request.app.state.model
-  device = getattr(request.app.state, "device", "cpu")
-
-  # 모델이 아직 로딩 중인 경우 503 반환 (Cloud Run 백그라운드 Warm-up 중)
-  if model is None:
+  try:
+    model = get_whisper_model(request.app)
+  except Exception as e:
+    logger.error(f"❌ 모델 로딩 중 예외 발생: {e}", exc_info=True)
     return JSONResponse(
-      status_code=503,
-      content={"error": {"code": "503", "msg": "모델 로딩 중입니다. 잠시 후 다시 시도해주세요."}}
+      status_code=500,
+      content={"error": {"code": "500", "msg": f"모델 로딩 실패: {str(e)}"}}
     )
+  
+  device = getattr(request.app.state, "device", "cpu")
   
   # JSON 문자열 파싱
   parsed_candidates = None

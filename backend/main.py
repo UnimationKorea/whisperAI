@@ -63,31 +63,8 @@ def create_app():
     def load_all_models():
       logger.info("🔥 [Warm-up] 백그라운드 모델 메모리 로딩 시작...")
       try:
-        # ★ 여기서 whisperx를 최초 import합니다 (torch도 함께 로딩됨)
-        import whisperx
-
-        # 1) WhisperX 메인 모델 로드
-        logger.info(f"⏳ WhisperX 모델 로딩 중... (Size: {MODEL_SIZE}, Device: {DEVICE})")
-        app.state.model = whisperx.load_model(MODEL_SIZE, DEVICE, compute_type=COMPUTE_TYPE)
-        logger.info("✅ WhisperX 모델 로딩 완료")
-
-        # # 2) 언어별 정렬 모델을 미리 로드 (첫 요청 지연 방지)
-        # get_align_model("en", DEVICE)
-        # get_align_model("zh", DEVICE)
-        # get_align_model("ja", DEVICE)
-
-        # # 3) 언어별 평가기(G2p, pykakasi 등) 백그라운드 사전 로드
-        # logger.info("⏳ 언어별 평가기(G2p, pykakasi 등) 백그라운드 로드 중...")
-        # from services.evaluator import get_evaluator
-        # get_evaluator("en")
-        # get_evaluator("zh")
-        # get_evaluator("ja")
-        # logger.info("✅ 언어별 평가기 백그라운드 로드 완료")
-
-        # 2) 모든 모델 로딩 완료 → 준비 상태로 전환
-        # (언어별 정렬 모델 및 평가기는 첫 요청 시 지연 로딩됩니다.)
-        app.state.model_ready = True
-        logger.info("✅ [Warm-up] 메인 WhisperX 모델 로딩 완료 및 즉시 사용 가능")
+        from api.evaluate import get_whisper_model
+        get_whisper_model(app)
       except Exception as e:
         import traceback
         error_msg = f"{e}\n{traceback.format_exc()}"
