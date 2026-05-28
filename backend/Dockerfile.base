@@ -25,7 +25,8 @@ RUN pip install --no-cache-dir \
     python-multipart==0.0.12 \
     requests==2.32.5 \
     pykakasi==2.3.0 \
-    pyworld==0.3.5
+    pyworld==0.3.5 \
+    setuptools
 
 # 4. 모델 및 데이터 미리 다운로드 (빌드 시점에 캐싱하여 런타임 지연 방지)
 RUN python -c "import nltk; nltk.download('averaged_perceptron_tagger'); nltk.download('averaged_perceptron_tagger_eng'); nltk.download('cmudict'); nltk.download('punkt')" && \

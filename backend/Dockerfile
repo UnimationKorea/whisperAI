@@ -10,17 +10,11 @@ WORKDIR /app
 # 베이스 이미지에 이미 모든 라이브러리가 설치되어 있으므로 코드만 복사하면 됩니다.
 COPY . .
 
-# setuptools 추가 설치 (Python 3.12 대응 및 pkg_resources 오류 해결)
-RUN pip install --no-cache-dir setuptools
-
 # 4. 환경 변수 설정
 ENV PORT=8080 \
     WHISPER_MODEL=base \
     WHISPER_DEVICE=cpu \
-    WHISPER_COMPUTE_TYPE=int8 \
-    HF_HOME=/root/.cache \
-    TORCH_HOME=/root/.cache \
-    XDG_CACHE_HOME=/root/.cache
+    WHISPER_COMPUTE_TYPE=int8
 
 # 5. 앱 실행 (Cloud Run 표준 포트 대응)
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
