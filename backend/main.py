@@ -46,6 +46,7 @@ def create_app():
   app.state.model = None
   app.state.device = DEVICE
   app.state.model_ready = False
+  app.state.warmup_error = None
 
   # 라우터 등록
   app.include_router(evaluate_router)
@@ -70,25 +71,15 @@ def create_app():
         app.state.model = whisperx.load_model(MODEL_SIZE, DEVICE, compute_type=COMPUTE_TYPE)
         logger.info("✅ WhisperX 모델 로딩 완료")
 
-        # # 2) 언어별 정렬 모델을 미리 로드 (첫 요청 지연 방지)
-        # get_align_model("en", DEVICE)
-        # get_align_model("zh", DEVICE)
-        # get_align_model("ja", DEVICE)
-
-        # # 3) 언어별 평가기(G2p, pykakasi 등) 백그라운드 사전 로드
-        # logger.info("⏳ 언어별 평가기(G2p, pykakasi 등) 백그라운드 로드 중...")
-        # from services.evaluator import get_evaluator
-        # get_evaluator("en")
-        # get_evaluator("zh")
-        # get_evaluator("ja")
-        # logger.info("✅ 언어별 평가기 백그라운드 로드 완료")
-
         # 2) 모든 모델 로딩 완료 → 준비 상태로 전환
         # (언어별 정렬 모델 및 평가기는 첫 요청 시 지연 로딩됩니다.)
         app.state.model_ready = True
         logger.info("✅ [Warm-up] 메인 WhisperX 모델 로딩 완료 및 즉시 사용 가능")
       except Exception as e:
-        logger.error(f"❌ [Warm-up] 모델 로딩 실패: {e}", exc_info=True)
+        import traceback
+        error_msg = f"{e}\n{traceback.format_exc()}"
+        logger.error(f"❌ [Warm-up] 모델 로딩 실패: {error_msg}")
+        app.state.warmup_error = error_msg
 
     # 백그라운드 스레드풀에서 모델 로딩을 실행하여 메인 스레드(FastAPI 기동 및 포트 리스닝)의 블로킹을 막습니다.
     loop = asyncio.get_running_loop()
@@ -100,12 +91,13 @@ def create_app():
   async def health_check():
     """모델 로딩 상태를 포함한 헬스체크 엔드포인트"""
     return {
-      "status": "healthy" if app.state.model_ready else "warming_up",
+      "status": "healthy" if app.state.model_ready else ("error" if app.state.warmup_error else "warming_up"),
       "model": MODEL_SIZE,
       "device": DEVICE,
       "compute_type": COMPUTE_TYPE,
       "engine": "whisperx",
-      "model_ready": app.state.model_ready
+      "model_ready": app.state.model_ready,
+      "warmup_error": app.state.warmup_error
     }
 
   return app
