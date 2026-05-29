@@ -8,7 +8,8 @@ const IS_LOCAL = new URLSearchParams(window.location.search).get("wstest") === "
 //   : "wss://whisperai-backend-597168932357.asia-northeast3.run.app/ws/evaluate";
 const API_URL = IS_LOCAL
   ? "http://localhost:8001"
-  : "https://whisperai-backend-597168932357.asia-northeast3.run.app";
+  // : "https://whisperai-backend-597168932357.asia-northeast3.run.app";
+  : "http://35.216.18.79:8000"
 
 import { LANG_DATA, VARIANTS_FEEDBACK } from "./constants";
 
@@ -292,6 +293,7 @@ function App() {
       logs.push(`• 난이도 ${diff}단계에 따라 글자 단위 채점을 진행합니다.`);
 
       details.forEach((d) => {
+        console.log(d.recognized)
         const expected = d.expected;
         const recognized = d.recognized || "(누락)";
         const pinyinIsCorrect = !!d.pinyin_is_correct;

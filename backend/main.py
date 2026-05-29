@@ -91,6 +91,15 @@ def create_app():
     def load_all_models():
       logger.info("🔥 [Warm-up] 백그라운드 모델 메모리 로딩 시작...")
       try:
+        # GCE 등 직접 구동 환경 대응: 필수 NLTK 데이터 자동 다운로드
+        import nltk
+        logger.info("⏳ [Warm-up] NLTK 데이터 확인 및 다운로드 중...")
+        nltk.download("averaged_perceptron_tagger", quiet=True)
+        nltk.download("averaged_perceptron_tagger_eng", quiet=True)
+        nltk.download("cmudict", quiet=True)
+        nltk.download("punkt", quiet=True)
+        logger.info("✅ [Warm-up] NLTK 데이터 확인 완료")
+
         # ★ 여기서 whisperx를 최초 import합니다 (torch도 함께 로딩됨)
         import whisperx
 
