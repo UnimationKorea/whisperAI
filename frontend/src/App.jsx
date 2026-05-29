@@ -9,7 +9,8 @@ const IS_LOCAL = new URLSearchParams(window.location.search).get("wstest") === "
 const API_URL = IS_LOCAL
   ? "http://localhost:8001"
   // : "https://whisperai-backend-597168932357.asia-northeast3.run.app";
-  : "http://35.216.18.79:8000"
+  // : "http://35.216.18.79:8000"
+  : "https://buried-make-translate-wiki.trycloudflare.com"
 
 import { LANG_DATA, VARIANTS_FEEDBACK } from "./constants";
 
