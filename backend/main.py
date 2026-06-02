@@ -108,10 +108,25 @@ def create_app():
         app.state.model = whisperx.load_model(MODEL_SIZE, DEVICE, compute_type=COMPUTE_TYPE)
         logger.info("✅ WhisperX 모델 로딩 완료")
 
-        # 2) 모든 모델 로딩 완료 → 준비 상태로 전환
-        # (언어별 정렬 모델 및 평가기는 첫 요청 시 지연 로딩됩니다.)
+        # 2) 언어별 정렬 모델을 미리 로드 (첫 요청 지연 방지)
+        from api.evaluate import get_align_model
+        PRELOAD_LANGUAGES = ["en", "zh", "ja"]
+        for lang in PRELOAD_LANGUAGES:
+          logger.info(f"⏳ [Warm-up] 정렬 모델 로딩 중... (Language: {lang})")
+          get_align_model(lang, DEVICE)
+          logger.info(f"✅ [Warm-up] 정렬 모델 로딩 완료 (Language: {lang})")
+
+        # 3) 언어별 발음 평가기(Evaluator) 인스턴스를 미리 로드
+        #    (내부적으로 g2p_en.G2p, pypinyin, pyworld, pykakasi 등 무거운 라이브러리가 초기화됩니다)
+        from services.evaluator import get_evaluator
+        for lang in PRELOAD_LANGUAGES:
+          logger.info(f"⏳ [Warm-up] 평가기 로딩 중... (Language: {lang})")
+          get_evaluator(lang)
+          logger.info(f"✅ [Warm-up] 평가기 로딩 완료 (Language: {lang})")
+
+        # 4) 모든 모델 로딩 완료 → 준비 상태로 전환
         app.state.model_ready = True
-        logger.info("✅ [Warm-up] 메인 WhisperX 모델 로딩 완료 및 즉시 사용 가능")
+        logger.info("✅ [Warm-up] 모든 모델 로딩 완료 및 즉시 사용 가능")
       except Exception as e:
         import traceback
         error_msg = f"{e}\n{traceback.format_exc()}"
