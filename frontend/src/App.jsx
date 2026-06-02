@@ -509,9 +509,10 @@ function App() {
                     ? `${expData.char}(${expData.pinyin}${expData.tone})`
                     : detail.expected;
                   // recognized: { char, pinyin, tone } → "ma1" 형식 (병음+성조만)
-                  const recData = result.analysis_data?.recognized?.[idx];
+                  const recData = practiceMode === "word" ? result.analysis_data?.selected?.[idx] : result.analysis_data?.recognized?.[idx];
+                  const tone = recData.pitch_confidence >= 0.5 ? recData.pitch_tone : recData.tone;
                   const recognizedLabel = recData
-                    ? `${recData.pinyin}${recData.tone}`
+                    ? `${recData.pinyin}${tone}`
                     : "(누락)";
 
                   return (
