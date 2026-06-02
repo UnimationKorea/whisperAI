@@ -294,7 +294,6 @@ function App() {
       logs.push(`• 난이도 ${diff}단계에 따라 글자 단위 채점을 진행합니다.`);
 
       details.forEach((d) => {
-        console.log(d.recognized)
         const expected = d.expected;
         const recognized = d.recognized || "(누락)";
         const pinyinIsCorrect = !!d.pinyin_is_correct;
@@ -498,12 +497,39 @@ function App() {
           <div className="score-circle"><span className="score-value">{result.score}</span>점</div>
           <div className="evaluation-details">
             <div className="word-highlight-container">
-              {result.analysis_data?.word_details?.map((detail, idx) => (
-                <div key={idx} className={`word-detail-item ${detail.is_correct ? "correct" : "incorrect"}`}>
-                  <span className="expected-word">{detail.expected}</span>
-                  {!detail.is_correct && <span className="actual-word">{detail.actual || "(누락)"}</span>}
-                </div>
-              ))}
+              {result.analysis_data?.word_details?.map((detail, idx) => {
+                // 중국어: 난이도에 따라 병음만 또는 병음+성조로 정답 판정
+                if (language === "zh") {
+                  const isCorrect = difficulty <= 2
+                    ? detail.pinyin_is_correct
+                    : detail.pinyin_is_correct && detail.tone_is_correct;
+                  // expected: { char, pinyin, tone } → "妈(ma1)" 형식
+                  const expData = result.analysis_data?.expected?.[idx];
+                  const expectedLabel = expData
+                    ? `${expData.char}(${expData.pinyin}${expData.tone})`
+                    : detail.expected;
+                  // recognized: { char, pinyin, tone } → "ma1" 형식 (병음+성조만)
+                  const recData = result.analysis_data?.recognized?.[idx];
+                  const recognizedLabel = recData
+                    ? `${recData.pinyin}${recData.tone}`
+                    : "(누락)";
+
+                  return (
+                    <div key={idx} className={`word-detail-item ${isCorrect ? "correct" : "incorrect"}`}>
+                      <span className="expected-word">{expectedLabel}</span>
+                      {!isCorrect && <span className="actual-word">{recognizedLabel}</span>}
+                    </div>
+                  );
+                }
+
+                // 영어 & 일본어: 기존 로직 유지
+                return (
+                  <div key={idx} className={`word-detail-item ${detail.is_correct ? "correct" : "incorrect"}`}>
+                    <span className="expected-word">{detail.expected}</span>
+                    {!detail.is_correct && <span className="actual-word">{detail.recognized || "(누락)"}</span>}
+                  </div>
+                );
+              })}
             </div>
           </div>
           {/* {result.feedback && <p className="feedback-text">{result.feedback}</p>} */}

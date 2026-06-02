@@ -101,7 +101,7 @@ class JapaneseEvaluator(BaseEvaluator):
             "align": 0
           },
           # word_details와 aligned_result를 analysis_data 내부로 통합합니다.
-          "word_details": [{"idx": 0, "expected": expected, "actual": raw_text, "is_correct": False, "score": 0}]
+          "word_details": [{"idx": 0, "expected": expected, "recognized": raw_text, "is_correct": False, "score": 0}]
         }
       }
 
@@ -166,7 +166,7 @@ class JapaneseEvaluator(BaseEvaluator):
         "word_details": [{
           "idx": 0,
           "expected": expected,
-          "actual": actual,
+          "recognized": actual,
           "is_correct": (actual == expected),
           "score": final_score
         }],
@@ -237,7 +237,7 @@ class JapaneseEvaluator(BaseEvaluator):
           word_details.append({
             "idx": exp_idx,
             "expected": exp_char,
-            "actual": raw_char,
+            "recognized": raw_char,
             "is_correct": (char_score >= 90),
             "score": char_score,
             "similarity": similarity

@@ -100,7 +100,7 @@ class EnglishEvaluator(BaseEvaluator):
           "word_details": [{
             "idx": 0,
             "expected": expected,
-            "actual": raw_text,
+            "recognized": raw_text,
             "is_correct": False,
             "score": 0
           }],
@@ -155,7 +155,7 @@ class EnglishEvaluator(BaseEvaluator):
     word_details = [{
       "idx": 0,
       "expected": expected,
-      "actual": actual if actual != expected else expected,
+      "recognized": actual if actual != expected else expected,
       "is_correct": (actual == expected)
     }]
 
@@ -310,7 +310,7 @@ class EnglishEvaluator(BaseEvaluator):
             word_details.append({
               "idx": i1 + k,
               "expected": expected_words[i1 + k],
-              "actual": raw_words[j1 + k],
+              "recognized": raw_words[j1 + k],
               "is_correct": True
             })
         elif tag == 'replace':
@@ -323,7 +323,7 @@ class EnglishEvaluator(BaseEvaluator):
               word_details.append({
                 "idx": exp_idx,
                 "expected": expected_words[exp_idx],
-                "actual": raw_words[raw_idx] if raw_idx < j2 else None,
+                "recognized": raw_words[raw_idx] if raw_idx < j2 else None,
                 "is_correct": False
               })
         elif tag == 'delete':
@@ -332,7 +332,7 @@ class EnglishEvaluator(BaseEvaluator):
             word_details.append({
               "idx": i1 + k,
               "expected": expected_words[i1 + k],
-              "actual": None,
+              "recognized": None,
               "is_correct": False
             })
     except Exception as e:
@@ -345,7 +345,7 @@ class EnglishEvaluator(BaseEvaluator):
         word_details.append({
           "idx": idx,
           "expected": word,
-          "actual": None,
+          "recognized": None,
           "is_correct": False
         })
 
