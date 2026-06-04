@@ -28,12 +28,22 @@ def get_align_model(language_code, device):
     align_models[language_code] = whisperx.load_align_model(language_code=language_code, device=device)
   return align_models[language_code]
 
-async def run_evaluation_process(model, device, audio_np, expected_word, language="en", mode="word", candidates=None):
+async def run_evaluation_process(model, device, audio_np, expected_word, language="en", mode="word", candidates=None, use_prompt=0):
   """
   Multi-Alignment Scoring: 후보군 중 가장 유사한 발음을 탐색합니다.
+  use_prompt: 0=없음, 1=initial_prompt, 2=hotwords, 3=둘 다
   """
   expected_word = expected_word.lower().strip()
-  print(f"\n[Evaluation Mode: {mode.upper()}] Target: {expected_word}")
+  print(f"\n[Evaluation Mode: {mode.upper()}] Target: {expected_word} | usePrompt: {use_prompt}")
+
+  # usePrompt 값에 따라 Whisper transcribe에 전달할 추가 파라미터를 구성합니다.
+  prompt_kwargs = {}
+  if use_prompt in (1, 3):
+    prompt_kwargs["initial_prompt"] = f"The student is reading: {expected_word}"
+  if use_prompt in (2, 3):
+    prompt_kwargs["hotwords"] = expected_word
+  if prompt_kwargs:
+    print(f"📝 [Prompt Kwargs]: {prompt_kwargs}")
   
   # 후보군이 전달되지 않은 경우 기본값으로 [정답단어] 사용
   if not candidates:
@@ -47,7 +57,8 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
     audio_np, 
     # language=language, # 언어를 고정하면 타 언어 입력 시 번역될 위험이 있음
     temperature=0,
-    vad_filter=True
+    vad_filter=True,
+    **prompt_kwargs
   )
   detected_lang = info.language
   lang_prob = info.language_probability
@@ -88,7 +99,8 @@ async def run_evaluation_process(model, device, audio_np, expected_word, languag
         audio_np, 
         language=language,
         temperature=0,
-        vad_filter=True
+        vad_filter=True,
+        **prompt_kwargs
       )
       refined_raw_text = "".join([s.text for s in raw_segments_gen]).strip().lower()
       print(f"📢 [Refined Whisper Transcription: '{refined_raw_text}']")
@@ -211,7 +223,8 @@ async def evaluate(
   expected: str = Form(...),
   language: str = Form("en"),
   mode: str = Form("word"),
-  candidates: str = Form(None)   # JSON string
+  candidates: str = Form(None),   # JSON string
+  usePrompt: int = Form(0)        # 0: 없음, 1: initial_prompt, 2: hotwords, 3: 둘 다
 ):
   model = request.app.state.model
   device = getattr(request.app.state, "device", "cpu")
@@ -242,7 +255,7 @@ async def evaluate(
       audio_np = np.frombuffer(file_bytes, dtype=np.int16).astype(np.float32) / 32768.0
       result = await run_evaluation_process(
         model, device, audio_np, expected, language, mode, 
-        candidates=parsed_candidates
+        candidates=parsed_candidates, use_prompt=usePrompt
       )
     else:
       # 2-2. 표준 오디오 형식 처리 (FFmpeg 필요, Cloud Run/Docker용)
@@ -255,7 +268,7 @@ async def evaluate(
         audio_np = whisperx.load_audio(tmp_path)
         result = await run_evaluation_process(
           model, device, audio_np, expected, language, mode, 
-          candidates=parsed_candidates
+          candidates=parsed_candidates, use_prompt=usePrompt
         )
       finally:
         if os.path.exists(tmp_path):

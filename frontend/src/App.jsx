@@ -48,6 +48,7 @@ function App() {
   const [targetWord, setTargetWord] = useState("");
   const [language, setLanguage] = useState("en");
   const [difficulty, setDifficulty] = useState(3);
+  const [usePrompt, setUsePrompt] = useState(0); // 0: 없음, 1: initial_prompt, 2: hotwords, 3: 둘 다
   const [result, setResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [transcripts, setTranscripts] = useState([]);
@@ -432,6 +433,7 @@ function App() {
       formData.append("expected", targetWord);
       formData.append("language", language);
       formData.append("mode", practiceMode);
+      formData.append("usePrompt", usePrompt.toString());
 
       const langVariants = VARIANTS_FEEDBACK[language];
       if (langVariants && langVariants[targetWord]) {
@@ -488,6 +490,33 @@ function App() {
               <input type="radio" name="targetWord" value={text} checked={targetWord === text} onChange={(e) => setTargetWord(e.target.value)} />
               {text}
             </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="difficulty-selector" style={{ marginTop: "20px", paddingTop: "15px" }}>
+        <h3>Prompt 모드</h3>
+        <p style={{ fontSize: "0.85rem", color: "#666", marginBottom: "10px", whiteSpace: "pre-wrap", textAlign: "left" }}>
+          {`
+            Whisper에 정답 힌트를 제공하는 방식을 선택합니다.
+            initial_prompt: 문맥(Context)을 알려줍니다. "The student is reading: {expected}"
+            hotwords: 정답 단어를 강조합니다.
+            둘 다: 문맥과 정답 단어를 모두 알려줍니다.
+            
+            initial_prompt: 이런 내용이 나올 가능성이 높다. 여러 후보 중 target 점수를 더 높게 줌. 문장 수준(Language Model Bias)에 영향을 줌. 시험 범위를 알려주는 것
+            hotwords: 이 단어는 매우 중요하다. 특정 단어 수준(Vocabulary Bias)에 영향을 줌. 시험에 반드시 나온다고 표시하는 것
+          `}
+        </p>
+        <div className="difficulty-group">
+          {[
+            { value: 0, label: "없음" },
+            { value: 1, label: "initial_prompt" },
+            { value: 2, label: "hotwords" },
+            { value: 3, label: "둘 다" },
+          ].map((opt) => (
+            <button key={opt.value} className={`difficulty-btn ${usePrompt === opt.value ? "active" : ""}`} onClick={() => setUsePrompt(opt.value)}>
+              {opt.label}
+            </button>
           ))}
         </div>
       </div>
