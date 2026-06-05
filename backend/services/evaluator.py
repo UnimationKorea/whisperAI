@@ -18,6 +18,9 @@ def get_evaluator(language: str):
     elif language == "ja":
       from .evaluators.ja_evaluator import JapaneseEvaluator
       _evaluators_cache["ja"] = JapaneseEvaluator()
+    elif language == "ko":
+      from .evaluators.ko_evaluator import KoreanEvaluator
+      _evaluators_cache["ko"] = KoreanEvaluator()
     else:
       # 기본값은 영어 평가기를 사용합니다.
       if "en" not in _evaluators_cache:

@@ -110,7 +110,7 @@ def create_app():
 
         # 2) 언어별 정렬 모델을 미리 로드 (첫 요청 지연 방지)
         from api.evaluate import get_align_model
-        PRELOAD_LANGUAGES = ["en", "zh", "ja"]
+        PRELOAD_LANGUAGES = ["en", "zh", "ja", "ko"]
         for lang in PRELOAD_LANGUAGES:
           logger.info(f"⏳ [Warm-up] 정렬 모델 로딩 중... (Language: {lang})")
           get_align_model(lang, DEVICE)

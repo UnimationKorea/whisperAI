@@ -406,6 +406,78 @@ function App() {
       } else {
         logs.push(`• 일본어 문장 채점은 기본 분석 점수를 적용합니다: ${finalScore}점`);
       }
+    } else if (lang === "ko") {
+      // 한국어 채점 로직
+      const clarityScore = typeof analysis.clarity_score === "number" ? analysis.clarity_score : 0;
+      
+      if (mode === "word") {
+        const isCorrectWord = data.recognized_text === data.expected;
+        const jamoScore = isCorrectWord ? 100 : (analysis.jamo_comparison?.total_match || 0) * 100;
+
+        let baseWordScore;
+        if (diff <= 2) {
+          baseWordScore = jamoScore;
+          logs.push(`• 난이도 1~2단계: 발음 명확도를 무시하고 자모 일치율만으로 채점합니다.`);
+        } else {
+          // 난이도에 따라 명확도 가중치 부여
+          let jamoWeight, clarityWeight;
+          if (diff === 3) {
+            jamoWeight = 0.70;
+            clarityWeight = 0.30;
+          } else if (diff === 4) {
+            jamoWeight = 0.55;
+            clarityWeight = 0.45;
+          } else {
+            // diff === 5
+            jamoWeight = 0.40;
+            clarityWeight = 0.60;
+          }
+          baseWordScore = (jamoScore * jamoWeight) + (clarityScore * clarityWeight);
+          logs.push(`• 난이도 ${diff}단계: 자모 일치율(${Math.round(jamoWeight*100)}%)과 명확도(${Math.round(clarityWeight*100)}%)를 종합합니다.`);
+        }
+
+        // 난이도 감점 적용
+        const difficultyPenalty = (diff - 1) * 2;
+        finalScore = Math.round(Math.max(0, Math.min(100, baseWordScore - difficultyPenalty)));
+
+        logs.push(`• 자모 일치율: ${Math.round(jamoScore)}%`);
+        if (diff >= 3) logs.push(`• 발음 명확도: ${Math.round(clarityScore)}점`);
+        logs.push(`• 난이도 보정: -${difficultyPenalty}점`);
+        logs.push(`• 최종 점수: ${finalScore}점`);
+      } else {
+        // 문장 모드
+        const details = analysis.word_details || [];
+        const avgJamoScore = details.length > 0
+          ? details.reduce((acc, d) => acc + (d.score || 0), 0) / details.length
+          : 0;
+
+        let baseSentenceScore;
+        if (diff <= 2) {
+          baseSentenceScore = avgJamoScore;
+          logs.push(`• 난이도 1~2단계: 발음 명확도를 무시하고 음절 자모 일치율만으로 채점합니다.`);
+        } else {
+          let jamoWeight, clarityWeight;
+          if (diff === 3) {
+            jamoWeight = 0.70;
+            clarityWeight = 0.30;
+          } else if (diff === 4) {
+            jamoWeight = 0.55;
+            clarityWeight = 0.45;
+          } else {
+            // diff === 5
+            jamoWeight = 0.40;
+            clarityWeight = 0.60;
+          }
+          baseSentenceScore = (avgJamoScore * jamoWeight) + (clarityScore * clarityWeight);
+          logs.push(`• 난이도 ${diff}단계: 음절 자모 일치율(${Math.round(jamoWeight*100)}%)과 명확도(${Math.round(clarityWeight*100)}%)를 종합합니다.`);
+        }
+
+        // 문장 모드는 보정치 없이 반올림
+        finalScore = Math.round(baseSentenceScore);
+        logs.push(`• 평균 자모 일치율: ${Math.round(avgJamoScore)}%`);
+        if (diff >= 3) logs.push(`• 발음 명확도: ${Math.round(clarityScore)}점`);
+        logs.push(`• 최종 점수: ${finalScore}점`);
+      }
     } else {
       logs.push(`• 기본 분석 점수 적용: ${finalScore}점`);
     }
@@ -468,10 +540,10 @@ function App() {
       <h1>Whisper 발음 평가</h1>
 
       <div className="language-selector">
-        {["en", "zh", "ja"].map(lang => (
+        {["en", "zh", "ja", "ko"].map(lang => (
           <label key={lang} className={`radio-label ${language === lang ? "active" : ""}`}>
             <input type="radio" name="language" value={lang} checked={language === lang} onChange={(e) => setLanguage(e.target.value)} />
-            {lang === "en" ? "영어" : lang === "zh" ? "중국어" : "일본어"}
+            {lang === "en" ? "영어" : lang === "zh" ? "중국어" : lang === "ja" ? "일본어" : "한국어"}
           </label>
         ))}
       </div>
